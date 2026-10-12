@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: gcalm
+          POSTGRES_PASSWORD: gcalm
+          POSTGRES_DB: gcalm_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U gcalm"
+          --health-interval 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - name: go vet
+        run: go vet ./...
+      - name: Tests (unit + integration, race detector)
+        env:
+          TEST_DATABASE_URL: postgres://gcalm:gcalm@localhost:5432/gcalm_test?sslmode=disable
+        run: go test -race -p 1 -count=1 ./...
+
+  image:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build container image
+        run: docker build --build-arg VERSION=${{ github.sha }} -t gcalm:ci .

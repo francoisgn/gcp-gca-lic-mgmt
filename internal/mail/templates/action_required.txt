@@ -1,0 +1,6 @@
+Hello {{.Name}},
+
+The enterprise directory is reachable again but your license request cannot be approved automatically:
+{{.Reason}}
+
+Open the portal to either withdraw your request or escalate it to an administrator: {{.PortalURL}}

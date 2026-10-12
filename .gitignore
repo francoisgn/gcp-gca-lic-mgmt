@@ -1,0 +1,19 @@
+# Binaries and local state
+/bin/
+/gcalm
+/edsim
+.dev/
+*.out
+coverage.*
+
+# Terraform
+deploy/terraform/.terraform/
+deploy/terraform/*.tfstate*
+deploy/terraform/.terraform.lock.hcl
+deploy/terraform/*.tfvars
+!deploy/terraform/example.tfvars
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
