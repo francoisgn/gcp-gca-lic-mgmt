@@ -194,6 +194,30 @@
     const labels = k.days.map(dayLabel);
     const byDay = (rows, pred, val) => k.days.map((d) => rows.filter((r) => r.day.slice(0, 10) === d && pred(r)).reduce((a, r) => a + val(r), 0));
 
+    // Directory load and availability: does the directory hold the load of the
+    // user requests plus the monthly re-check? Availability = answered calls
+    // (OK or "unknown account") / all calls.
+    const dir = k.directory || [];
+    const all = byDay(dir, () => true, (r) => r.n);
+    const answered = byDay(dir, (r) => r.outcome === 'OK' || r.outcome === 'NOT_FOUND', (r) => r.n);
+    draw('chart-ed-load', {
+      data: { labels, datasets: [
+        bar('User requests', byDay(dir, (r) => r.context === 'UX', (r) => r.n), G.blue, 'load'),
+        bar('Monthly re-check', byDay(dir, (r) => r.context === 'JOB', (r) => r.n), G.lilac, 'load'),
+        bar('Admin', byDay(dir, (r) => r.context === 'ADMIN', (r) => r.n), G.grey, 'load'),
+        { ...line('Availability', all.map((n, i) => (n ? Math.round((1000 * answered[i]) / n) / 10 : null)), G.green, { width: 1.5 }), yAxisID: 'pct' },
+      ] },
+      options: {
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: { ...xAxis, stacked: true },
+          y: yAxis({ stacked: true, title: { display: true, text: 'calls' } }),
+          pct: { position: 'right', min: 0, max: 100, grid: { display: false }, border: { display: false }, ticks: { callback: (v) => `${v} %` } },
+        },
+        plugins: { tooltip: { callbacks: { label: (c) => (c.dataset.yAxisID === 'pct' ? `Availability: ${c.parsed.y} %` : `${c.dataset.label}: ${c.parsed.y}`) } } },
+      },
+    });
+
     // Directory errors, stacked by type.
     const types = [['TIMEOUT', G.amber], ['HTTP_5XX', G.rose], ['HTTP_4XX', G.violet], ['NETWORK', G.yellow], ['RATE_LIMITED', G.blue], ['ERROR', G.lilac], ['NOT_FOUND', G.grey]];
     draw('chart-ed-errors', {

@@ -4,8 +4,10 @@ package service_test
 // notifications, monthly directory re-check.
 
 import (
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/domain"
 	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/service"
@@ -215,5 +217,57 @@ func TestDirectoryRecheck(t *testing.T) {
 	exec(`UPDATE license_assignments SET user_email = 'anniv.edslow@example.com' WHERE user_email = 'anniv.user@example.com'`)
 	if res, _ := e.Svc.RecheckUser(ctx, "alex.martin@example.com", "anniv.edslow@example.com"); res != service.CheckError {
 		t.Fatalf("error: %s", res)
+	}
+}
+
+// The IAM bundle group follows the licenses: every end of license revokes the
+// roles, and the subscription refresh removes any member left without a
+// license (failed revocation, member added by hand) and restores missing ones.
+func TestCredentialsReconciliation(t *testing.T) {
+	e := testenv.New(t, 3)
+	_, res := e.Request(t, "anna.kept@example.com")
+	mustOutcome(t, res, service.OutcomeAssigned)
+	_, res = e.Request(t, "ben.removed@example.com")
+	mustOutcome(t, res, service.OutcomeAssigned)
+	if m, _ := e.Creds.Members(ctx); !slices.Equal(m, []string{"anna.kept@example.com", "ben.removed@example.com"}) {
+		t.Fatalf("members after assignment = %v", m)
+	}
+
+	// Removal by an administrator revokes the roles right away.
+	if _, err := e.Svc.Unassign(ctx, "alex.martin@example.com", []string{"ben.removed@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := e.Creds.Members(ctx); !slices.Equal(m, []string{"anna.kept@example.com"}) {
+		t.Fatalf("members after removal = %v", m)
+	}
+
+	// Drift: a stray member (failed revocation / added by hand) and a licensed
+	// user who lost the roles. The refresh fixes both.
+	e.Creds.AddMember("stray.member@example.com")
+	if err := e.Creds.Revoke(ctx, "anna.kept@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := e.Svc.RefreshSubscriptions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := e.Creds.Members(ctx); !slices.Equal(m, []string{"anna.kept@example.com"}) {
+		t.Fatalf("members after reconciliation = %v (%s)", m, summary)
+	}
+	if !strings.Contains(summary, "iam_revoked=1 iam_granted=1") {
+		t.Fatalf("summary = %s", summary)
+	}
+
+	// A user licensed in Google outside the portal (GOOGLE_ONLY deviation)
+	// keeps the roles: Google is the source of truth, an admin decides.
+	if err := e.Fake.Seed("console.user@example.com", time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	e.Creds.AddMember("console.user@example.com")
+	if _, err := e.Svc.RefreshSubscriptions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := e.Creds.Members(ctx); !slices.Contains(m, "console.user@example.com") {
+		t.Fatalf("GOOGLE_ONLY member revoked: %v", m)
 	}
 }

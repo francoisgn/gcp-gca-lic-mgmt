@@ -30,7 +30,6 @@ const (
 	EvLicenseAssigned     = "license_assigned"     // user: license active (end of the process)
 	EvQueued              = "queued"               // user: pool exhausted, waiting list position
 	EvBuffered            = "buffered"             // user: timeout, automatic retry
-	EvActionRequired      = "action_required"      // user: directory KO after a retry
 	EvRemovedUnused       = "removed_unused"       // user: 7 days without usage
 	EvRemovedExpired      = "removed_expired"      // user: requested duration elapsed
 	EvRemovedAdmin        = "removed_admin"        // user: removed by an administrator
@@ -69,7 +68,9 @@ type removedMail struct {
 	Until      time.Time
 	Reason     string
 	ReasonHint string
-	Requeued   bool
+	Requeued   bool // subscription renewal: back in the waiting list
+	Position   int  // position in the waiting list when requeued
+	Waiting    int  // users waiting
 }
 
 type queuedMail struct {
@@ -87,11 +88,6 @@ type rejectedMail struct {
 	mailBase
 	DecidedAt *time.Time
 	Reason    string
-}
-
-type actionMail struct {
-	mailBase
-	Reason string
 }
 
 type escalatedMail struct {
@@ -185,7 +181,7 @@ func (s *Service) notifyOutcome(ctx context.Context, req *store.Request, res *Fu
 // request is retried automatically (sent once per request).
 func (s *Service) notifyBuffered(ctx context.Context, req *store.Request, stage domain.BufferStage) {
 	step := map[domain.BufferStage]string{
-		domain.StageDirectory: "directory validation", domain.StageCredentials: "cloud credentials", domain.StageLicense: "license assignment",
+		domain.StageCredentials: "cloud credentials", domain.StageLicense: "license assignment",
 	}[stage]
 	s.notify(ctx, EvBuffered, "buffered", req.UserEmail, "Your Gemini Code Assist request is delayed",
 		bufferedMail{mailBase: s.base(req.UserEmail), Step: step, RetryEvery: strconv.Itoa(int(s.Cfg.BufferRetryEvery.Minutes())) + " minutes"}, &req.ID)
@@ -247,16 +243,28 @@ func (s *Service) notifyRemoved(ctx context.Context, removed []store.Assignment,
 	case domain.EndAdminRemoval:
 		event, hint = EvRemovedAdmin, "an administrator removed it"
 	case domain.EndSubscriptionEnded:
-		event, hint = EvRemovedSubscription, "the renewed subscription has fewer seats"
+		event, hint = EvRemovedSubscription, "the new subscription has fewer seats than the previous one; the seats went to the most recent users"
 	default:
 		return // removed outside the portal: no e-mail
 	}
 	now := s.Now()
+	waiting := 0
+	if reason == domain.EndSubscriptionEnded {
+		waiting, _ = s.DB.QueueDepth(ctx)
+	}
 	for _, a := range removed {
-		s.notify(ctx, event, "removed", a.UserEmail, "Your Gemini Code Assist license was removed", removedMail{
+		m := removedMail{
 			mailBase: s.base(a.UserEmail), Since: a.AssignedAt, Until: now, Reason: reason.Label(), ReasonHint: hint,
-			Requeued: reason == domain.EndSubscriptionEnded,
-		}, a.RequestID)
+			Requeued: reason == domain.EndSubscriptionEnded, Waiting: waiting,
+		}
+		subject := "Your Gemini Code Assist license was removed"
+		if m.Requeued {
+			if e, err := s.DB.WaitingEntry(ctx, a.UserEmail); err == nil {
+				m.Position = e.Position
+			}
+			subject = "Your Gemini Code Assist license was not renewed — you are in the waiting list"
+		}
+		s.notify(ctx, event, "removed", a.UserEmail, subject, m, a.RequestID)
 	}
 }
 

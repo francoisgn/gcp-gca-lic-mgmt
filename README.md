@@ -7,6 +7,8 @@
 
 **Self-service portal to govern Gemini Code Assist Standard / Enterprise licenses in a Google Cloud organization**: eligible employees get a license in seconds, the pool is reclaimed automatically, administrators keep control and Google stays the source of truth.
 
+> **Status: alpha** — `0.1.0-alpha.1` ([changelog](CHANGELOG.md)). Complete feature set validated with the simulators; not yet run against the real Google APIs and directory.
+
 ![Landing page](docs/wiki/images/landing-active.png)
 
 ## Features
@@ -15,7 +17,7 @@
 - **Fair pool** — waiting list when the pool is exhausted, priority buffer when Google or the directory time out (retried every 7 min), removal after 7 days without usage or at expiry.
 - **Admin control** — escalations (external `*.ext@` accounts always go through an admin), approve / reject with history, manual assignment, atomic transfer, criteria-based mass removal, GPS code allowlist managed in the UI.
 - **Continuous compliance** — monthly re-check of every license against the enterprise directory (assignment anniversary), drift and "no longer eligible" flags in the inventory.
-- **Subscription lifecycle** — renewal detection every 3 h with license migration; deviations with Google tracked until resolved.
+- **Subscription lifecycle** — the newest subscription wins (checked every 3 h), licenses migrate with the most recent users first; deviations with Google tracked until resolved; cloud roles reconciled with the licenses so they never accumulate.
 - **Observability** — license flow waterfall, queue / buffer / deviation depth, external license ratio, directory errors and response times, e-mail journal.
 
 **Stack**: Go 1.26 · Cloud Run · Identity-Aware Proxy · Cloud SQL for PostgreSQL 16 · Cloud Scheduler · Secret Manager · Cloud Commerce Consumer Procurement API · Cloud Identity Groups API · Terraform.

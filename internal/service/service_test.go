@@ -5,6 +5,7 @@ package service_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -192,27 +193,34 @@ func TestEscalation(t *testing.T) {
 	}
 }
 
-// Directory timeout => buffer (DIRECTORY stage, no seat reserved).
-func TestDirectoryTimeoutBuffer(t *testing.T) {
+// Directory unavailable (timeout) => the request stops: nothing buffered, no
+// seat reserved, the draft is kept and the user can try again; the failure is
+// recorded for the technical KPIs.
+func TestDirectoryUnavailable(t *testing.T) {
 	e := testenv.New(t, 1)
-	dir, _ := e.Request(t, "lucas.edslow@example.com")
-	if dir.Outcome != domain.DirTechnicalKO || dir.BufferPosition != 1 {
-		t.Fatalf("outcome = %s pos=%d", dir.Outcome, dir.BufferPosition)
+	const who = "lucas.edslow@example.com"
+	dir, _ := e.Request(t, who)
+	if dir.Outcome != domain.DirTechnicalKO || dir.Reason != service.DirectoryUnavailable || dir.BufferPosition != 0 {
+		t.Fatalf("outcome = %s %q pos=%d", dir.Outcome, dir.Reason, dir.BufferPosition)
+	}
+	if b, _ := e.DB.PendingBuffer(ctx, who); b != nil {
+		t.Fatalf("directory outage buffered: %+v", b)
 	}
 	if n, _ := e.DB.ReservedSeats(ctx, 0); n != 0 {
-		t.Fatalf("directory-buffered request reserves %d seat(s)", n)
+		t.Fatalf("directory outage reserves %d seat(s)", n)
 	}
-	v, _ := e.Svc.Home(ctx, e.User("lucas.edslow@example.com"), 1)
-	if v.State != service.StateBuffered || v.Buffer.Stage != domain.StageDirectory {
-		t.Fatalf("home = %s", v.State)
+	req, err := e.DB.OpenRequestFor(ctx, who)
+	if err != nil || req.Status != domain.ReqDraft {
+		t.Fatalf("request = %+v, %v (draft expected)", req, err)
 	}
-	// Still hanging on retry: stays buffered, attempt counted.
-	if _, err := e.Svc.RetryBuffer(ctx); err != nil {
-		t.Fatal(err)
+	// Trying again is allowed (same draft, no conflict).
+	again, _ := e.Request(t, who)
+	if again.Outcome != domain.DirTechnicalKO || again.RequestID != dir.RequestID {
+		t.Fatalf("retry = %s request %d (was %d)", again.Outcome, again.RequestID, dir.RequestID)
 	}
-	b, _ := e.DB.PendingBuffer(ctx, "lucas.edslow@example.com")
-	if b == nil || b.Attempts != 1 {
-		t.Fatalf("buffer = %+v", b)
+	var timeouts int
+	if err := e.DB.Pool.QueryRow(ctx, `SELECT count(*) FROM api_calls WHERE target='DIRECTORY' AND outcome='TIMEOUT' AND context='UX'`).Scan(&timeouts); err != nil || timeouts != 2 {
+		t.Fatalf("recorded directory timeouts = %d, %v", timeouts, err)
 	}
 }
 
@@ -311,7 +319,9 @@ func TestPurge(t *testing.T) {
 	}
 }
 
-// Subscription rollover: licenses migrate; overflow goes first in the queue.
+// Renewal with fewer seats: the most recent users keep their seat (order of
+// last usage, never-used last); the others are queued first with priority
+// and told their position by e-mail.
 func TestSubscriptionRollover(t *testing.T) {
 	e := testenv.New(t, 3)
 	for _, u := range []string{"a.user@example.com", "b.user@example.com", "c.user@example.com"} {
@@ -320,6 +330,8 @@ func TestSubscriptionRollover(t *testing.T) {
 	}
 	_, res := e.Request(t, "waiting.user@example.com")
 	mustOutcome(t, res, service.OutcomeQueued)
+	setUsage(t, e, "a.user@example.com", 48*time.Hour) // used 2 days ago
+	setUsage(t, e, "c.user@example.com", time.Hour)    // used 1 hour ago; b never used
 
 	if _, err := e.Fake.Rollover(2); err != nil {
 		t.Fatal(err)
@@ -331,16 +343,58 @@ func TestSubscriptionRollover(t *testing.T) {
 	if cur.SeatsTotal != 2 {
 		t.Fatalf("current seats = %d", cur.SeatsTotal)
 	}
-	if n := activeCount(t, e); n != 2 {
-		t.Fatalf("active after rollover = %d", n)
+	for _, kept := range []string{"a.user@example.com", "c.user@example.com"} {
+		if a, err := e.DB.ActiveAssignment(ctx, kept); err != nil || a.SubscriptionID != cur.ID {
+			t.Fatalf("%s not migrated: %+v %v", kept, a, err)
+		}
 	}
 	head, _ := e.DB.QueueHead(ctx)
-	if head.UserEmail != "c.user@example.com" || head.Priority != domain.PriorityMigration {
-		t.Fatalf("queue head = %+v (the overflow user must come first)", head)
+	if head.UserEmail != "b.user@example.com" || head.Priority != domain.PriorityMigration {
+		t.Fatalf("queue head = %+v (the never-used license must be the one requeued, first)", head)
 	}
 	users, _ := e.Fake.Enumerate(ctx, cur.ID)
 	if len(users) != 2 {
 		t.Fatalf("google users in new pool = %d", len(users))
+	}
+	mails := e.Mails.To("b.user@example.com")
+	if len(mails) == 0 || !strings.Contains(mails[len(mails)-1].Text, "#1 in the waiting list (2 user(s) waiting)") {
+		t.Fatalf("requeue e-mail = %+v", mails)
+	}
+}
+
+// A newer subscription takes over even while Google still shows the previous
+// one active (each subscription makes the previous one inoperative).
+func TestNewerSubscriptionTakesOver(t *testing.T) {
+	e := testenv.New(t, 2)
+	_, res := e.Request(t, "a.user@example.com")
+	mustOutcome(t, res, service.OutcomeAssigned)
+	old, _ := e.DB.CurrentSubscription(ctx)
+	time.Sleep(1100 * time.Millisecond) // the fake dates orders to the second
+	next, err := e.Fake.AddSubscription(5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Svc.RefreshSubscriptions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cur, _ := e.DB.CurrentSubscription(ctx)
+	if cur.ID != next || cur.ID == old.ID || cur.SeatsTotal != 5 {
+		t.Fatalf("current = %s (%d seats), want %s", cur.ID, cur.SeatsTotal, next)
+	}
+	if a, err := e.DB.ActiveAssignment(ctx, "a.user@example.com"); err != nil || a.SubscriptionID != next {
+		t.Fatalf("license not migrated: %+v %v", a, err)
+	}
+}
+
+func setUsage(t *testing.T, e *testenv.Env, email string, ago time.Duration) {
+	t.Helper()
+	a, err := e.DB.ActiveAssignment(ctx, email)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-ago)
+	if err := e.DB.SetLastUsage(ctx, a.ID, &at); err != nil {
+		t.Fatal(err)
 	}
 }
 

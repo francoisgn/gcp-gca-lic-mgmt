@@ -57,7 +57,7 @@ Numbers are accepted for any field (a numeric business unit loses its leading ze
 | 200 + status KO / no GPS / bad format / GPS code not in the allowlist table | 🔴 functional KO | reason + *Withdraw* / *Escalate* |
 | external account (`*.ext@`), whatever the answer | 🔴 functional KO | *External accounts are never approved automatically* + *Escalate* |
 | 404 | 🔴 functional KO | "account not found" |
-| timeout (5 s), 5xx, 429, network, 401 | 🟠 technical KO → buffer | buffer position, retried every 7 min |
+| timeout (5 s), 5xx, 429, network, 401 | 🟠 technical KO → **process stopped** | *"Enterprise directory unavailable — try again in a few minutes"*; nothing buffered |
 
 ## Simulator
 
@@ -68,10 +68,14 @@ Numbers are accepted for any field (a numeric business unit loses its leading ze
 | `ko` | `john.ko@example.com` | account status KO |
 | `nogps` | `emma.nogps@example.com` | empty GPS code |
 | `ghost` | `max.ghost@example.com` | 404 |
-| `edslow` | `lucas.edslow@example.com` | hangs → timeout → buffer |
-| `ederr` | `a.ederr@example.com` | HTTP 503 → buffer |
+| `edslow` | `lucas.edslow@example.com` | hangs → timeout → "directory unavailable" |
+| `ederr` | `a.ederr@example.com` | HTTP 503 → "directory unavailable" |
 | `badgps` | `tom.badgps@example.com` | valid GPS code **not in the allowlist** (`0badc0de`) |
 
 The simulator draws GPS codes from 12 fixed values (`directory.SimulatorGPSCodes`), all present in the allowlist of the demo data, so ordinary demo users are approved automatically.
 
 `DIRECTORY_SIM_FAILURE_RATE` adds random 500 / 503 / timeouts (feeds the technical KPIs). The fake Google API has its own markers: `slow` (first assign hangs), `iamslow` (first credentials grant hangs), `idle` (never uses the license).
+
+## Load and availability
+
+Two sources of calls: **user requests** (step 5 of the form) and the **monthly re-check** (one call per active license per month, nightly, spread over the month, 4 calls in parallel at most). *Observability → Technical KPIs → Enterprise directory — load & availability* shows both per day with the availability (calls the directory answered — OK or unknown account — divided by all calls). Errors by type (timeout, 5xx, 4xx, network, rate limiting) are in the next chart. A drop of availability during the re-check window (02:30) means the directory does not hold the batch: lower `policy.directory_recheck.concurrency`.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -109,27 +110,11 @@ func (s *Service) CheckDirectory(ctx context.Context, user auth.Identity, in For
 
 	switch outcome {
 	case domain.DirTechnicalKO:
-		// Technical KO -> buffer, retried by the scheduled job.
-		req.Status = domain.ReqBuffered
-		req.BufferedAt = &now
-		wctx, wcancel := detached(ctx, 5*time.Second)
-		defer wcancel()
-		var buf *store.BufferEntry
-		err = s.DB.Tx(wctx, func(q store.Q) error {
-			if err := q.UpdateRequest(wctx, req); err != nil {
-				return err
-			}
-			buf, err = q.UpsertBuffer(wctx, req.ID, email, domain.StageDirectory, errString(lookupErr), false, now)
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-		res.BufferPosition = buf.Position
-		res.BufferTotal, _ = s.DB.BufferDepth(ctx)
-		res.Steps = s.stepsFor(req, buf)
-		s.notifyBuffered(ctx, req, domain.StageDirectory)
-		return res, nil
+		// Technical KO (timeout, 5xx, network): the directory is unavailable.
+		// The process stops here — nothing is buffered, no seat is reserved —
+		// and the draft is kept so the user can simply try again. The failed
+		// call is recorded in the technical KPIs (directory availability).
+		slog.Warn("enterprise directory unavailable", "email", email, "err", lookupErr)
 	case domain.DirFunctionalKO:
 		req.Status = domain.ReqDirectoryKO
 	}
@@ -153,6 +138,10 @@ func (s *Service) CheckDirectory(ctx context.Context, user auth.Identity, in For
 // ExternalReason is shown to external accounts (never auto-approved).
 const ExternalReason = "External accounts are never approved automatically. You can escalate your request to an administrator."
 
+// DirectoryUnavailable is shown when the enterprise directory does not answer
+// (timeout, server error, network): the request stops, the user retries later.
+const DirectoryUnavailable = "The enterprise directory is unavailable. Your request was not sent: please try again in a few minutes."
+
 // evaluateDirectory turns a directory answer into an outcome.
 func (s *Service) evaluateDirectory(ctx context.Context, email string, acc directory.Account, err error) (domain.DirectoryOutcome, string, error) {
 	switch {
@@ -169,7 +158,7 @@ func (s *Service) evaluateDirectory(ctx context.Context, email string, acc direc
 		return domain.DirFunctionalKO, "Your account was not found in the enterprise directory.", nil
 	default:
 		// Timeout, 5xx, network, misconfiguration: not the user's fault.
-		return domain.DirTechnicalKO, "The enterprise directory did not answer in time.", nil
+		return domain.DirTechnicalKO, DirectoryUnavailable, nil
 	}
 }
 

@@ -36,16 +36,25 @@ Short records of the structuring choices. Status: ✅ accepted · 🟠 to confir
 - **Decision**: grant `roles/cloudaicompanion.user` + `roles/serviceusage.serviceUsageConsumer` once to a group on the Gemini project; credentials = group membership (Cloud Identity API).
 - **Why not per-user IAM bindings**: asynchronous, 1,500-principal policy limit, concurrent policy edits.
 - **Why not everyone in the company**: see [[Google APIs and Permissions#why-not-grant-the-roles-to-everyone]].
-- **To confirm**: the portal service accounts must be *managers* of the group.
+- **Lifecycle**: removed at every end of license; reconciled with the licenses every 3 hours (stray members removed, missing ones restored — Google part of the reference, owners / managers never touched), so the roles never accumulate.
+- **To confirm**: the portal service accounts must be *managers* of the group ([[Authorizing the Portal]]).
 
 ## ADR-09 — Manual assignment protocol on the license pool ✅
 - The pool must stay in **manual** assignment mode: the portal is the only assignment authority (automatic assignment would bypass training and directory checks, and would make individual assign / unassign impossible).
 
 ## ADR-10 — Buffer only for transient failures ✅
-- Timeouts, 5xx, 429 and network errors → buffer (retried every 7 min, abandoned after 30 attempts). Permanent errors (4xx) → request FAILED with the reason, visible to admins. A directory timeout also goes to the buffer (stage DIRECTORY, no seat reserved yet).
+- Google timeouts, 5xx, 429 and network errors (credentials, license) → buffer (retried every 7 min, abandoned after 30 attempts). Permanent errors (4xx) → request FAILED with the reason, visible to admins.
+- **A directory outage is not buffered** (0.1.0-alpha.1): the request stops with *"Enterprise directory unavailable"* and the user tries again — a validation that cannot be performed must not leave a pending request; the failure is measured in the technical KPIs (availability).
 
 ## ADR-11 — Admins as code ✅
 - `config/roles.yaml` in git: pull request = four-eyes review, git log = audit trail. No UI to grant roles.
 
 ## ADR-12 — Feedback through a technical tracker account ✅
 - Users do not all have a Jira / GitLab account: issues are created by a technical account (token in Secret Manager); the requester's SSO e-mail is written in the issue body and kept in the `feedback` table.
+
+## ADR-13 — The newest subscription wins; most recent users keep their seat ✅
+- Each new Gemini Code Assist subscription makes the previous one inoperative, even when Google still shows it active. The refresh switches to the **newest active subscription** (latest start, then largest pool) as soon as it appears and migrates every license.
+- New pool smaller: seats go by **most recent usage** (database or Google `recentUsageTime`, the freshest), never-used licenses last. The others go first in the waiting list (priority 10) and receive an e-mail with their position.
+
+## ADR-14 — No account "with rights": the Cloud Run service accounts ✅
+- The portal acts with the identities of its Cloud Run services (ADC, short-lived tokens): no personal account, no key file to store or rotate. Least privilege: a custom role on the billing account (license pool only, no purchase / cancellation) and manager of one group. See [[Authorizing the Portal]].

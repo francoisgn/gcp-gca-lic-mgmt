@@ -58,3 +58,13 @@ terraform -chdir=deploy/terraform fmt -check -recursive
 | test | `TEST_DATABASE_URL` / connection refused | PostgreSQL service not healthy: re-run once |
 | secrets | `leaks found` | remove the secret, **rotate it**, rewrite the commit if not pushed to `master`; a false positive goes in `.gitleaksignore` (fingerprint) or gets an inline `# gitleaks:allow` |
 | image | push denied | *Settings → Actions → General → Workflow permissions*: read and write, or package settings → *Manage Actions access* |
+
+## Releases
+
+| Step | What happens |
+|---|---|
+| 1. Add a `## [X.Y.Z]` section to `CHANGELOG.md` (pull request) | — |
+| 2. `git tag -a vX.Y.Z -m X.Y.Z && git push origin vX.Y.Z` | **CI** runs every job on the tag and pushes the image `ghcr.io/francoisgn/gcp-gca-lic-mgmt:X.Y.Z` (no `latest` for a tag) |
+| | **Release** workflow creates the GitHub release with the changelog section; a suffix (`-alpha.1`, `-rc.1`) makes it a *pre-release* |
+
+A tag without its changelog section fails the *Release* workflow (the image is still built). Check: *Releases* on the repository page, and *Packages* for the image.

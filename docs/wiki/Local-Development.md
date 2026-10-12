@@ -30,9 +30,9 @@ The yellow **DEV** bar switches identity:
 | `noah.wilson@example.com` | waiting list |
 | `mia.ko@example.com` | pending admin (case 0.1) |
 | `liam.ko@example.com` | rejected twice (case 0.2) |
-| `sofia.edslow@example.com` | buffer |
+| `sofia.slow@example.com` | buffer (Google timeout on the license) |
 | `jane.doe@example.com`, `paul.new@example.com` | new request (pool exhausted) |
-| `john.ko@`, `emma.nogps@`, `lucas.edslow@`, `nina.slow@example.com` | directory KO, no GPS, directory timeout, Google timeout |
+| `john.ko@`, `emma.nogps@`, `lucas.edslow@`, `nina.slow@example.com` | directory KO, no GPS, directory unavailable (process stopped), Google timeout |
 | `tom.badgps@example.com` | GPS code not in the allowlist → escalation |
 | `marc.dupont.ext@example.com` | external account: never auto-approved |
 | `lisa.martin.ext@example.com` | external account waiting for an admin |

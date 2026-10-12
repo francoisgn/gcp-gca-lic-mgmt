@@ -42,7 +42,7 @@ When the user has no active license, a **Previous licenses** table shows each fo
 2. **Step 5** — `POST /api/request/directory`: the request is stored as a draft and the directory is called (5 s).
    - ✅ OK → site, business unit, masked GPS code; the answers are frozen.
    - 🔴 functional KO (account KO, no / invalid GPS code, GPS code not in the allowlist, unknown account, **external account**) → *Withdraw* or *Escalate*. Escalation (**step 6**) asks for division, entity, project and an optional comment, then lists the admins to contact.
-   - 🟠 technical KO (timeout, 5xx, network) → buffer.
+   - 🟠 technical KO (timeout, 5xx, network) → **the process stops**: message *"Enterprise directory unavailable — try again in a few minutes"*, nothing is buffered or reserved, the button stays available. The failure is recorded in the technical KPIs.
 3. **Steps 7 · 8 · 9** (one form section, badge *7–9*) — `POST /api/request/{id}/submit` with a loading animation; **10 s budget**:
    - seat available → credentials, license, e-mail → 🟢 *Your license is active*;
    - pool exhausted → 🔵 *You are #x in the waiting list* (+ e-mail);
@@ -55,14 +55,15 @@ Request date, assignment date, planned end · how to set up Gemini Code Assist i
 
 | Rule | Detail |
 |---|---|
-| Auto-approval | Internal account + training ✓ + directory account status `OK` + GPS code with the right format (`policy.eligibility`) **and present in the GPS codes table** (Admin → GPS codes) + business unit allowed (optional list) |
+| Auto-approval | User e-mail → directory lookup → GPS code → **GPS code in the allowlist table** (Admin → GPS codes) ⇒ approved. Also required: internal account, training ✓, directory account status `OK`, GPS code format (`policy.eligibility`), business unit allowed (optional list). Otherwise: functional KO, escalation to an administrator possible. |
 | External accounts | `firstname.lastname.ext@domain` (suffix `policy.accounts.external_suffix`) → **never auto-approved**: functional KO *"External accounts are never approved automatically"*, escalation possible, an admin decides. |
 | Monthly directory re-check | Every active license is re-checked against the directory once a month (assignment anniversary, nightly job). Site / BU / GPS changes → flag **Data changed**; would no longer be auto-approved → flag **No longer eligible**. Nothing is removed automatically. See [[Scheduled Jobs]]. |
 | Unused license | No usage for `unused_days` (7) → removed (*Unused*). Last activity = latest of assignment, subscription migration, last usage stored, Google `recentUsageTime` (refreshed by Google within 24 h). |
 | Expiry | Requested duration elapsed → removed (*Expired*). |
 | Queue | Served by priority (subscription rollover 10 > buffer 5 > normal 0) then FIFO, as soon as a seat is released (event) and every 7 min (job). |
-| Buffer | Retried every 7 min, before the queue; abandoned after 30 attempts (request FAILED, visible to admins). |
-| Subscription | Refreshed every 3 h (+ button for super admins). If the current subscription becomes inactive and a new active one exists, licenses are migrated (oldest first); users not fitting in the new pool go first in the queue. |
+| Buffer | Google timeouts only (credentials, license). Retried every 7 min, before the queue; abandoned after 30 attempts (request FAILED, visible to admins). A directory outage is not buffered: the request stops. |
+| Subscription | Refreshed every 3 h (+ button for super admins). Each new subscription makes the previous one inoperative: **as soon as a newer active subscription appears** (or the current one becomes inactive), licenses are migrated to it. If the new pool is smaller, users are kept **by most recent usage** (never-used licenses last); the others go first in the queue (priority) and receive an e-mail with their position. |
+| Cloud roles | Removed at every end of license; reconciled with the licenses every 3 h (see [[Google APIs and Permissions]]). |
 
 ## 3. Administration (admins and super admins)
 

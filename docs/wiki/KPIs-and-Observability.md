@@ -27,6 +27,7 @@ Period selector: 14 / 30 / 90 days.
 
 | KPI | Source |
 |---|---|
+| **Directory load & availability** | calls per day by origin — user requests (UX), monthly re-check (JOB), admin — and availability % (answered calls / all calls): does the directory hold the load? |
 | Directory errors by type (stacked bars) | `api_calls` target `DIRECTORY`: TIMEOUT, HTTP_5XX, HTTP_4XX, NETWORK, RATE_LIMITED, NOT_FOUND (unknown account) |
 | Directory response time | p50 / p95 of successful lookups |
 | Google credentials grant time | p50 / p95 of `GOOGLE_CREDENTIALS grant` |

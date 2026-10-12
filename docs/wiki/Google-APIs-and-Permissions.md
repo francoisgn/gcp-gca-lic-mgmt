@@ -16,7 +16,7 @@ Useful fields: `LicensePool.totalLicenseCount`, `availableLicenseCount`, `licens
 
 A subscription is considered **active** when it has a non-cancelled line item whose subscription window covers *now* and its pool has seats. Gemini Code Assist orders are recognised with `GCA_ORDER_MATCH` (regex on offer + display name) or listed explicitly with `GCA_ORDER_IDS`.
 
-**Permissions** — custom organization role `gcaLicensePortal` granted on the **billing account** to the web and worker service accounts:
+**Permissions** — custom organization role `gcaLicensePortal` granted on the **billing account** to the web and worker service accounts (step by step, with and without Terraform: [[Authorizing the Portal]]):
 
 ```
 billing.accounts.get
@@ -42,6 +42,37 @@ To use Gemini Code Assist Standard / Enterprise a user needs **a license and two
 **Bundle** (implemented): both roles are bound once (Terraform) to the group `CREDENTIALS_GROUP`. The portal grants credentials by adding the user to the group and revokes them when the license ends (Cloud Identity Groups API, `memberships.create` / `lookup` / `delete`). The portal service accounts must be **managers** of the group (Terraform does it when it creates the group; otherwise add them by hand).
 
 Compared with the previous asynchronous per-user grants: one synchronous call (~200–500 ms), no IAM policy edit, no 1,500-member policy limit, revocation symmetrical with the license.
+
+### When are the roles removed?
+
+**Every time a license ends**, the user leaves the group in the same operation:
+
+| End of license | Roles removed by |
+|---|---|
+| 7 days without usage · requested duration elapsed | `purge` job |
+| Admin removal · transfer (source user) · mass removal | the admin action |
+| Not kept at a subscription renewal (back in the queue) | `subscription-refresh` migration |
+| Deviation resolved — *Remove from Google* (GOOGLE_ONLY) or *Close record* (DB_ONLY, license already gone in Google) | the admin action |
+
+**Safety net — reconciliation every 3 hours** (`subscription-refresh`): a removal is a network call and can fail; someone can also add a member by hand. The refresh compares the group with the licenses and fixes the drift, so the roles never accumulate:
+
+| Group member… | Action |
+|---|---|
+| without an active license in the portal **and** not licensed in Google, not in flight (seat reserved / buffered) | 🔴 removed |
+| licensed in Google outside the portal (open GOOGLE_ONLY deviation) | 🟠 kept until an admin resolves the deviation |
+| licensed in the portal and in Google but missing from the group | 🟢 added back |
+| owner / manager of the group (the portal service accounts) | never touched |
+
+Google is part of the reference, so a database problem can never trigger a mass revocation. At most 200 changes per run (the rest at the next run); every change is in the audit log (`credentials.reconcile`) and the job summary (`iam_revoked=… iam_granted=…`).
+
+### What exactly do these roles give?
+
+| Role | Scope | Gives |
+|---|---|---|
+| `roles/cloudaicompanion.user` | **Gemini for Google Cloud** on the Gemini project | Gemini Code Assist in the IDE — and the other Gemini for Google Cloud entry points of that project (Gemini in the Cloud console, Gemini CLI signed in with the Code Assist license). Not specific to the IDE plugin. |
+| `roles/serviceusage.serviceUsageConsumer` | the Gemini project | Permission to *consume* the APIs enabled on that project (quota / billing attribution). Generic, but harmless on a **dedicated project with only `cloudaicompanion.googleapis.com` enabled and no resources**: there is nothing else to call. |
+
+Neither role gives access to code, data or resources elsewhere. Without a license, the roles alone do not give Gemini Code Assist Standard / Enterprise. 🟠 The policy *"no command-line usage"* (Gemini CLI) cannot be enforced by IAM — the same license and role allow it; it stays a usage rule (confirmation e-mail, training).
 
 ### Why not grant the roles to everyone?
 

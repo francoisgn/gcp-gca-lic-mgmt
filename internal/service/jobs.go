@@ -109,41 +109,16 @@ func (s *Service) retryEntry(ctx context.Context, e store.BufferEntry) (string, 
 	kind := telemetry.KindFromOr(ctx, telemetry.KindJob)
 
 	if e.Stage == domain.StageDirectory {
-		dctx, cancel := context.WithTimeout(telemetry.WithKind(ctx, kind), s.Cfg.DirectoryTimeout)
-		acc, lookupErr := s.Directory.Lookup(dctx, req.UserEmail)
-		cancel()
-		outcome, reason, err := s.evaluateDirectory(ctx, req.UserEmail, acc, lookupErr)
-		if err != nil {
-			return "", err
-		}
+		// Directory outages are not buffered any more (the request stops and
+		// the user retries). A leftover entry is closed: back to draft.
+		req.Status = domain.ReqDraft
 		now := s.Now()
-		switch outcome {
-		case domain.DirTechnicalKO:
-			if _, err := s.toBuffer(ctx, req, domain.StageDirectory, lookupErr); err != nil {
-				return "", err
+		return "directory_closed", s.DB.Tx(ctx, func(q store.Q) error {
+			if err := q.UpdateRequest(ctx, req); err != nil {
+				return err
 			}
-			return "still_buffered", nil
-		case domain.DirFunctionalKO:
-			// The user has to choose: exit or escalate (next visit).
-			s.applyDirectory(req, acc, outcome, reason, now)
-			req.Status = domain.ReqDirectoryKO
-			err := s.DB.Tx(ctx, func(q store.Q) error {
-				if err := q.UpdateRequest(ctx, req); err != nil {
-					return err
-				}
-				return q.ResolveBuffer(ctx, req.ID, domain.BufferDone, now)
-			})
-			if err != nil {
-				return "", err
-			}
-			s.notify(ctx, EvActionRequired, "action_required", req.UserEmail, "Action required on your Gemini Code Assist request",
-				actionMail{mailBase: s.base(req.UserEmail), Reason: reason}, &req.ID)
-			return "directory_ko", nil
-		}
-		s.applyDirectory(req, acc, outcome, reason, now)
-		if err := s.DB.UpdateRequest(ctx, req); err != nil {
-			return "", err
-		}
+			return q.ResolveBuffer(ctx, req.ID, domain.BufferAbandoned, now)
+		})
 	}
 
 	jctx, cancel := s.jobCtx(ctx, kind)

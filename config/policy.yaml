@@ -49,7 +49,6 @@ notifications:
   license_assigned: true         # user: license active (end of the process; mentions the approval if any)
   queued: true                   # user: pool exhausted, position in the waiting list
   buffered: true                 # user: a service timed out, automatic retry
-  action_required: true          # user: directory KO after a retry, choose withdraw / escalate
   removed_unused: true           # user: removed after 7 days without usage
   removed_expired: true          # user: requested duration elapsed
   removed_admin: true            # user: removed by an administrator (incl. transfer, mass removal)

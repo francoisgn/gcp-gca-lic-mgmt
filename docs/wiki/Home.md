@@ -19,7 +19,7 @@ Self-service portal managing **Gemini Code Assist Standard / Enterprise** licens
 |---|---|
 | Understand the big picture | [[Architecture]] · [[Architecture Decisions]] |
 | Know every screen and rule | [[Functional Specification]] · [[Request Lifecycle]] · [[Notifications]] |
-| Understand the Google side | [[Google APIs and Permissions]] |
+| Understand the Google side | [[Google APIs and Permissions]] · [[Authorizing the Portal]] |
 | Plug the real enterprise directory | [[Enterprise Directory]] |
 | Read the KPIs | [[KPIs and Observability]] |
 | Run it on your laptop | [[Local Development]] · [[Testing]] |

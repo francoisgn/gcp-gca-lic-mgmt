@@ -270,7 +270,7 @@ func (s *Service) stepsFor(r *store.Request, buf *store.BufferEntry) []domain.St
 	case *r.DirOutcome == domain.DirFunctionalKO:
 		domain.SetStep(st, domain.StepDirectory, domain.StepKO, strOr(r.DirReason, ""))
 	case *r.DirOutcome == domain.DirTechnicalKO:
-		domain.SetStep(st, domain.StepDirectory, domain.StepWarn, "Directory unreachable, retry scheduled")
+		domain.SetStep(st, domain.StepDirectory, domain.StepWarn, "Directory unavailable — try again later")
 	}
 
 	// Admin validation (grey unless escalated).
@@ -316,8 +316,6 @@ func (s *Service) stepsFor(r *store.Request, buf *store.BufferEntry) []domain.St
 		switch domain.BufferStage(stage) {
 		case domain.StageCredentials:
 			domain.SetStep(st, domain.StepCredentials, domain.StepKO, "Technical failure")
-		case domain.StageDirectory:
-			domain.SetStep(st, domain.StepDirectory, domain.StepKO, "Technical failure")
 		default:
 			domain.SetStep(st, domain.StepLicense, domain.StepKO, "Technical failure")
 		}
