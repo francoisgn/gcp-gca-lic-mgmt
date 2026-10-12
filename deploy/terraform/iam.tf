@@ -9,7 +9,7 @@ resource "google_service_account" "web" {
 
 resource "google_service_account" "worker" {
   account_id   = "gcalm-worker"
-  display_name = "GCA license portal — scheduled jobs"
+  display_name = "GCA license portal — scheduled jobs (Cloud Run jobs)"
 }
 
 resource "google_service_account" "scheduler" {
@@ -63,12 +63,4 @@ resource "google_billing_account_iam_member" "license_manager" {
   billing_account_id = var.billing_account_id
   role               = google_organization_iam_custom_role.license_manager.name
   member             = "serviceAccount:${each.value}"
-}
-
-# Cloud Scheduler may only invoke the worker.
-resource "google_cloud_run_v2_service_iam_member" "scheduler_invokes_worker" {
-  name     = google_cloud_run_v2_service.worker.name
-  location = var.region
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${google_service_account.scheduler.email}"
 }

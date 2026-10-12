@@ -73,3 +73,21 @@ variable "alert_email" {
   description = "E-mail notified by the alerting policies."
   type        = string
 }
+
+variable "gitlab_project_path" {
+  description = "GitLab project allowed to deploy without key (group/project). Empty: no CI/CD resources."
+  type        = string
+  default     = ""
+}
+
+variable "gitlab_url" {
+  description = "GitLab instance URL, issuer of the CI/CD OIDC tokens (e.g. https://gitlab.example.com)."
+  type        = string
+  default     = "https://gitlab.com"
+}
+
+variable "gitlab_jwks_json" {
+  description = "Public keys of the GitLab instance (content of <gitlab_url>/oauth/discovery/keys) when Google cannot reach it. Empty: Google fetches them."
+  type        = string
+  default     = ""
+}

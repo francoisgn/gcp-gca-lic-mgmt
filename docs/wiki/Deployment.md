@@ -34,7 +34,7 @@ terraform init
 terraform apply -var-file=prod.tfvars -var image=$REGION-docker.pkg.dev/$PROJECT/gcalm/gcalm:$VERSION
 ```
 
-Creates: APIs, Artifact Registry, 3 service accounts, custom role + billing account bindings, group bindings on the Gemini project, Cloud SQL (PostgreSQL 16, PITR), secrets, Cloud Run `gcalm-web` (IAP) and `gcalm-worker`, IAP access for `portal_users`, Cloud Scheduler jobs, log-based metrics and alert policies.
+Creates: APIs, Artifact Registry, 3 service accounts, custom role + billing account bindings, group bindings on the Gemini project, Cloud SQL (PostgreSQL 16, PITR), secrets, Cloud Run `gcalm-web` (IAP) and one Cloud Run job per scheduled task (`gcalm-*`), IAP access for `portal_users`, Cloud Scheduler jobs, keyless CI/CD from GitLab when `gitlab_project_path` is set (`cicd.tf`), log-based metrics and alert policies.
 
 ## 4. Fill the secrets
 
@@ -42,9 +42,10 @@ Creates: APIs, Artifact Registry, 3 service accounts, custom role + billing acco
 printf '%s' "$DIRECTORY_KEY" | gcloud secrets versions add gcalm-directory-api-key --data-file=-
 printf '%s' "$GITLAB_TOKEN"  | gcloud secrets versions add gcalm-tracker-token     --data-file=-
 printf '%s' "$SMTP_PASSWORD" | gcloud secrets versions add gcalm-smtp-password     --data-file=-
-gcloud run services update gcalm-web    --region $REGION   # pick up the new versions
-gcloud run services update gcalm-worker --region $REGION
+gcloud run services update gcalm-web --region $REGION   # new revision: picks up the new secret versions
 ```
+
+The Cloud Run jobs read `latest` at each execution: nothing to do for them.
 
 The environment variable names (`DIRECTORY_API_KEY`, `GITLAB_TOKEN`, `SMTP_PASSWORD`) are the ones referenced by the `*_secret_env` keys of `config/settings.yaml` ([[Configuration]]).
 
@@ -58,4 +59,6 @@ The environment variable names (`DIRECTORY_API_KEY`, `GITLAB_TOKEN`, `SMTP_PASSW
 - [ ] *Scheduled jobs* table: every job ran once (*Run now*).
 
 ## Upgrades
-Build a new image, `terraform apply -var image=…`. Migrations run automatically at start-up (advisory lock, idempotent). Roles / policy / settings changes = pull request + new image.
+- **Application**: tag `vX.Y.Z` on the GitLab project → the pipeline builds the image and rolls it out to the service and every job (see [[Continuous Integration]]). By hand: `scripts/rollout.sh <image> <region>`. **Rollback** = roll out the previous image tag. Migrations run automatically at start-up (advisory lock, idempotent).
+- **Infrastructure** (Terraform): `terraform plan` / `apply` by an administrator; Terraform ignores the image of the service and jobs after their creation, so an apply never rolls an image back.
+- Roles / policy / settings changes = merge request + new image.

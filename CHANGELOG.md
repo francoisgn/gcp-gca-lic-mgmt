@@ -2,6 +2,17 @@
 
 All notable changes of the GCA License Portal. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions: [Semantic Versioning](https://semver.org/). Design changes are tracked separately in [DESIGN.md](DESIGN.md).
 
+## [Unreleased]
+
+### Changed
+- Scheduled jobs run as **Cloud Run jobs** (`gcalm job <name>`), executed by Cloud Scheduler through the Cloud Run Admin API; a failed run exits non-zero and is retried by Cloud Run. The HTTP worker (`APP_MODE=worker`) remains available.
+- Terraform creates the Cloud Run service and jobs, then ignores image changes: images are rolled out by CI/CD or `scripts/rollout.sh`.
+
+### Added
+- **GitLab CI/CD** (`.gitlab-ci.yml`): lint, vulnerability scan, race tests on PostgreSQL, Terraform validation, secret scan, image to Artifact Registry, rollout to Cloud Run.
+- **Keyless delivery**: Workload Identity Federation for one GitLab project and protected refs, `gcalm-deployer` service account limited to image push and rollout (`deploy/terraform/cicd.tf`).
+- The release workflow fills in a release drafted in the GitHub UI.
+
 ## [0.1.0-alpha.1] - 2026-10-12
 
 First alpha: complete feature set, validated with the simulators (fake Google API, simulated enterprise directory) — **not yet run against the real Google APIs and directory**.

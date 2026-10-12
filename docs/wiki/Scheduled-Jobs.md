@@ -1,6 +1,8 @@
 # Scheduled jobs
 
-Cloud Scheduler calls `POST https://gcalm-worker-…run.app/jobs/{name}` with an OIDC token of the `gcalm-scheduler` service account (only principal with `roles/run.invoker` on the worker; the token audience and e-mail are verified again in the app). Each run takes a dedicated PostgreSQL advisory lock (no overlap) and is recorded in `job_runs` (visible in *Observability → Scheduled jobs*). A run in error returns HTTP 500 so Cloud Scheduler retries once and the `gcalm/job_errors` log metric triggers an alert.
+Each job is a **Cloud Run job** `gcalm-<name>` running the portal image with `gcalm job <name>`. Cloud Scheduler executes it through the Cloud Run Admin API (`POST https://run.googleapis.com/v2/projects/…/jobs/gcalm-<name>:run`) with an OAuth token of the `gcalm-scheduler` service account — the only principal allowed to run the jobs. Each run takes a dedicated PostgreSQL advisory lock (no overlap, even with a *Run now* in progress) and is recorded in `job_runs` (visible in *Observability → Scheduled jobs*). A run in error exits non-zero: Cloud Run retries the execution once and the `gcalm/job_errors` log metric triggers an alert. Executions and their logs: *Cloud Run → Jobs → gcalm-<name>*.
+
+Seats released by a job (purge, renewal) are served at once: the job runs the queue right after. *Run now* (super admin) executes the job inside the portal process. `APP_MODE=worker` (HTTP endpoints `POST /jobs/{name}`, OIDC-verified) remains available for platforms without Cloud Run jobs.
 
 | Job | Schedule (time zone `TIMEZONE`) | What it does |
 |---|---|---|

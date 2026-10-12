@@ -68,3 +68,48 @@ terraform -chdir=deploy/terraform fmt -check -recursive
 | | **Release** workflow creates the GitHub release with the changelog section; a suffix (`-alpha.1`, `-rc.1`) makes it a *pre-release* |
 
 A tag without its changelog section fails the *Release* workflow (the image is still built). Check: *Releases* on the repository page, and *Packages* for the image.
+
+## GitLab CI/CD — keyless delivery to Google Cloud
+
+`.gitlab-ci.yml` runs the same checks as GitHub Actions and delivers the portal from the internal GitLab, with **Workload Identity Federation**: no service account key, anywhere.
+
+```
+lint ──┬─ lint:go          gofmt · go vet · staticcheck · govulncheck
+       ├─ lint:terraform   fmt · init · validate
+       └─ lint:secrets     gitleaks on the history
+test ──── test             go test -race on PostgreSQL 16, coverage
+build ─── build:image      image → Artifact Registry               default branch, v* tags
+deploy ── deploy           scripts/rollout.sh: service + jobs       v* tags (manual on the default branch)
+```
+
+### How the pipeline gets Google credentials
+
+```
+GitLab job ── id_token (aud = WIF provider) ──▶ Google STS ──▶ federated token
+          ──▶ IAM Credentials: generateAccessToken(gcalm-deployer) ──▶ 1 h access token
+```
+
+`scripts/ci/gcp-token.sh` does the two exchanges with `curl`. Google accepts the token only if it comes from **the configured GitLab project** and a **protected branch or tag** (attribute condition of the provider, `deploy/terraform/cicd.tf`).
+
+| The deployer can | The deployer cannot |
+|---|---|
+| 🟢 push images to the `gcalm` Artifact Registry repository | 🔴 change IAM, Cloud SQL, secrets, the scheduler or any other infrastructure |
+| 🟢 roll a new image out to `gcalm-web` and the `gcalm-*` jobs | 🔴 read the secrets |
+
+### One-off set-up
+
+| # | Where | What |
+|---|---|---|
+| 1 | `prod.tfvars` | `gitlab_project_path = "group/project"`, `gitlab_url = "https://gitlab.example.com"`; if Google cannot reach the GitLab instance, `gitlab_jwks_json` = content of `<gitlab_url>/oauth/discovery/keys` |
+| 2 | admin workstation | `terraform apply` → `terraform output gitlab_ci_variables` |
+| 3 | GitLab → *Settings → CI/CD → Variables* | `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOYER_SA` (none is secret; mark them *protected*) |
+| 4 | GitLab → *Settings → Repository* | protect the default branch and the tags `v*` |
+| 5 | runners without Internet | override `GO_IMAGE`, `DOCKER_IMAGE`, `GCLOUD_IMAGE`… with the internal mirror; set `GOPROXY` for the image build |
+
+Docker builds use Docker-in-Docker (privileged runner). Release = push a tag `vX.Y.Z` (changelog section first, as on GitHub).
+
+### Check a delivery
+
+- *Build → Pipelines*: every stage green; `deploy` shows the image rolled out.
+- *Cloud Run*: `gcalm-web` → *Revisions* (new revision, 100 % traffic); *Jobs* → `gcalm-*` → the image tag.
+- Rollback: re-run the `deploy` job of the previous tag's pipeline, or `scripts/rollout.sh <previous image> <region>`.

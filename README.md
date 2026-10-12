@@ -20,7 +20,7 @@
 - **Subscription lifecycle** — the newest subscription wins (checked every 3 h), licenses migrate with the most recent users first; deviations with Google tracked until resolved; cloud roles reconciled with the licenses so they never accumulate.
 - **Observability** — license flow waterfall, queue / buffer / deviation depth, external license ratio, directory errors and response times, e-mail journal.
 
-**Stack**: Go 1.26 · Cloud Run · Identity-Aware Proxy · Cloud SQL for PostgreSQL 16 · Cloud Scheduler · Secret Manager · Cloud Commerce Consumer Procurement API · Cloud Identity Groups API · Terraform.
+**Stack**: Go 1.26 · Cloud Run (service + jobs) · Identity-Aware Proxy · Cloud SQL for PostgreSQL 16 · Cloud Scheduler · Secret Manager · Cloud Commerce Consumer Procurement API · Cloud Identity Groups API · Terraform · GitHub Actions / GitLab CI with Workload Identity Federation.
 
 ## Try it in 1 minute (everything simulated)
 
