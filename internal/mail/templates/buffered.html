@@ -1,0 +1,6 @@
+{{template "header" .}}
+<h1 style="font-family:Lato,Roboto,Arial,sans-serif;font-size:24px;margin:0 0 16px 0;color:#cdd6f4;">Your request is delayed — nothing to do</h1>
+<p>Hello {{.Name}},</p>
+<p>A service did not answer in time during the <strong>{{.Step}}</strong> step. Your request is saved with priority and retried automatically every {{.RetryEvery}}.</p>
+<p>You will receive an e-mail as soon as it is completed. You can follow it on the portal.</p>
+{{template "footer" .}}

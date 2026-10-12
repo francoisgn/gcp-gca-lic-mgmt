@@ -93,6 +93,10 @@ func (s *Server) portalRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /api/admin/inventory", s.api(roles.RoleAdmin, s.apiInventory))
 	mux.Handle("POST /api/admin/queue/{id}/cancel", s.api(roles.RoleAdmin, s.apiCancelQueue))
 	mux.Handle("POST /api/admin/buffer/{id}/retry", s.api(roles.RoleAdmin, s.apiRetryBuffer))
+	mux.Handle("POST /api/admin/gps", s.api(roles.RoleAdmin, s.apiAddGPS))
+	mux.Handle("DELETE /api/admin/gps/{code}", s.api(roles.RoleAdmin, s.apiRemoveGPS))
+	mux.Handle("POST /api/admin/directory/acknowledge", s.api(roles.RoleAdmin, s.apiAcknowledgeDrift))
+	mux.Handle("POST /api/admin/directory/recheck", s.api(roles.RoleAdmin, s.apiRecheck))
 
 	// Observability API (admins).
 	mux.Handle("GET /api/obs/summary", s.api(roles.RoleAdmin, s.apiObsSummary))

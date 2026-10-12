@@ -107,10 +107,12 @@ const GCA = (() => {
    * Confirmation dialog. Resolves { ok, value } (value = textarea content
    * when `input` is true).
    */
-  function confirm({ title, text = '', confirmLabel = 'Confirm', input = false, inputLabel = 'Reason', danger = false }) {
+  function confirm({ title, text = '', confirmLabel = 'Confirm', input = false, inputLabel = 'Reason', danger = false, pre = false }) {
     const dlg = document.getElementById('dialog');
     dlg.querySelector('#dialog-title').textContent = title;
-    dlg.querySelector('#dialog-text').textContent = text;
+    const textNode = dlg.querySelector('#dialog-text');
+    textNode.textContent = text;
+    textNode.classList.toggle('dialog-pre', pre); // e-mail preview: keep line breaks
     const wrap = dlg.querySelector('#dialog-input-wrap');
     const field = dlg.querySelector('#dialog-input');
     wrap.hidden = !input;

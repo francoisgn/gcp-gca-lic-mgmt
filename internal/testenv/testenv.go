@@ -40,6 +40,7 @@ admins: [alex.martin@example.com, sam.lee@example.com]
 
 // PolicyYAML is the policy file used by tests.
 const PolicyYAML = `
+accounts: {external_suffix: ".ext"}
 durations: [{code: 7d}, {code: 1M}, {code: 3M}]
 default_duration: 1M
 unused_days: 7
@@ -82,7 +83,8 @@ func New(t *testing.T, seats int, opts ...Option) *Env {
 		t.Fatalf("migrate: %v", err)
 	}
 	if _, err := db.Pool.Exec(ctx, `TRUNCATE subscriptions, license_requests, license_assignments, queue_entries,
-		buffer_entries, deviations, api_calls, daily_stats, feedback, audit_log, job_runs RESTART IDENTITY CASCADE`); err != nil {
+		buffer_entries, deviations, api_calls, daily_stats, feedback, audit_log, job_runs, allowed_gps_codes,
+		notifications RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 
@@ -126,6 +128,10 @@ func New(t *testing.T, seats int, opts ...Option) *Env {
 	})
 	if _, err := svc.RefreshSubscriptions(ctx); err != nil {
 		t.Fatalf("initial refresh: %v", err)
+	}
+	// Every GPS code of the simulator is authorized unless a test removes it.
+	if _, err := db.AddGPSCodes(ctx, directory.SimulatorGPSCodes, "test", "super.admin@example.com"); err != nil {
+		t.Fatalf("gps allowlist: %v", err)
 	}
 	return &Env{Cfg: cfg, DB: db, Svc: svc, Fake: fake, Mails: mails, Clock: clock, Roles: rl, Policy: pol}
 }

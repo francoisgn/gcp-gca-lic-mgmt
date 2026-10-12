@@ -18,6 +18,7 @@ import (
 //
 //	"ko"      -> account status KO            (functional KO)
 //	"nogps"   -> empty GPS code                (functional KO)
+//	"badgps"  -> GPS code outside the pool     (functional KO: not in the allowlist)
 //	"ghost"   -> unknown account, HTTP 404     (functional KO)
 //	"edslow"  -> hangs until the caller's timeout (technical KO -> buffer)
 //	"ederr"   -> HTTP 503                      (technical KO -> buffer)
@@ -27,6 +28,13 @@ import (
 type Simulator struct {
 	MaxLatency  time.Duration
 	FailureRate float64
+}
+
+// SimulatorGPSCodes are the GPS codes handed out by the simulator. Like real
+// cost-centre codes they are shared by many people (one per team).
+var SimulatorGPSCodes = []string{
+	"a3f09c1e", "b71d22e4", "c40e9a17", "d2b6f3a8", "e5a1c0d9", "f0c3b7e2",
+	"1a9e4d6b", "2c7f8e31", "3e5b2a9c", "4d8c1f70", "5b2e7d4a", "6f1a3c85",
 }
 
 // sites are random-looking trigrams used as attachment sites.
@@ -82,13 +90,16 @@ func (s *Simulator) Profile(email string) Account {
 		Status:       "OK",
 		Site:         sites[sum%uint64(len(sites))],
 		BusinessUnit: fmt.Sprintf("%03d", 100+(sum>>8)%900),
-		GPSCode:      fmt.Sprintf("%08x", uint32(sum>>20)),
+		GPSCode:      SimulatorGPSCodes[(sum>>20)%uint64(len(SimulatorGPSCodes))],
 	}
 	if HasMarker(email, "ko") {
 		acc.Status = "KO"
 	}
 	if HasMarker(email, "nogps") {
 		acc.GPSCode = ""
+	}
+	if HasMarker(email, "badgps") {
+		acc.GPSCode = "0badc0de" // valid format, never in the allowlist
 	}
 	return acc
 }

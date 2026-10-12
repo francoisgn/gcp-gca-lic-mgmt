@@ -117,6 +117,8 @@ func (s *Service) RefreshSubscriptions(ctx context.Context) (string, error) {
 // completed by the next refresh (the old subscription stays current until
 // the switch succeeds).
 func (s *Service) migrate(ctx context.Context, from, to *store.Subscription) (moved, queued int, err error) {
+	var requeued []store.Assignment
+	defer func() { s.notifyRemoved(ctx, requeued, domain.EndSubscriptionEnded) }()
 	err = s.DB.WithLock(ctx, store.LockPool, func() error {
 		active, err := s.DB.ActiveAssignments(ctx, from.ID)
 		if err != nil {
@@ -170,6 +172,7 @@ func (s *Service) migrate(ctx context.Context, from, to *store.Subscription) (mo
 			if err := s.requeueAfterRollover(ctx, a, now); err != nil {
 				return err
 			}
+			requeued = append(requeued, a)
 			queued++
 		}
 		return s.DB.Audit(ctx, "system", "subscription.migrate", to.ID,

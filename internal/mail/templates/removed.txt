@@ -3,4 +3,5 @@ Hello {{.Name}},
 Your Gemini Code Assist license (active since {{date .Since}}) was removed on {{date .Until}}.
 Reason: {{.Reason}}{{if .ReasonHint}} — {{.ReasonHint}}{{end}}
 
-You can request a new license at any time from the portal: {{.PortalURL}}
+{{if .Requeued}}You have been placed first in the waiting list: a license will be assigned again automatically as soon as one is free.{{else}}You can request a new license at any time from the portal.{{end}}
+Portal: {{.PortalURL}}

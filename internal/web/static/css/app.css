@@ -470,6 +470,7 @@ dialog {
 }
 dialog::backdrop { background: rgba(17, 17, 27, 0.7); backdrop-filter: blur(4px); }
 dialog h3 { margin-bottom: var(--s-3); }
+.dialog-pre { white-space: pre-wrap; font-family: var(--font-mono); font-size: 12px; max-height: 60vh; overflow: auto; background: var(--surface); padding: var(--s-3); border-radius: var(--r-md); }
 .toasts { position: fixed; right: var(--s-6); bottom: var(--s-6); display: grid; gap: var(--s-2); z-index: 100; }
 .toast { background: var(--bg-elevated); border: 1px solid var(--border-strong); border-left: 4px solid var(--info); border-radius: var(--r-md); padding: var(--s-3) var(--s-4); box-shadow: var(--shadow-2); max-width: 420px; font-size: 14px; animation: reveal var(--t-med) var(--ease); }
 .toast--ok { border-left-color: var(--ok); } .toast--ko { border-left-color: var(--ko); } .toast--warn { border-left-color: var(--warn); }
@@ -494,6 +495,8 @@ details.disclosure[open] summary { margin-bottom: var(--s-3); }
 .empty { text-align: center; padding: var(--s-10) var(--s-4); color: var(--text-muted); }
 .empty svg { width: 40px; height: 40px; color: var(--text-faint); margin-bottom: var(--s-3); }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-5); }
+.split--aside { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+.split > .card + .card { margin-top: 0; }
 @media (max-width: 860px) { .split { grid-template-columns: 1fr; } }
 .toolbar { display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; margin-bottom: var(--s-4); }
 .toolbar .grow { min-width: 200px; }

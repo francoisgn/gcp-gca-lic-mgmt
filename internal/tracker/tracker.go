@@ -79,6 +79,7 @@ type Jira struct {
 	Token     string // API token
 	Project   string // project key
 	IssueType string // e.g. Task
+	Labels    []string
 	HTTP      *http.Client
 }
 
@@ -98,7 +99,7 @@ func (j Jira) Create(ctx context.Context, i Issue) (string, string, error) {
 		"issuetype":   map[string]string{"name": j.IssueType},
 		"summary":     i.Summary(),
 		"description": map[string]any{"type": "doc", "version": 1, "content": content},
-		"labels":      []string{"gca-portal", "feedback-" + strings.ToLower(i.Category)},
+		"labels":      append(append([]string{}, j.Labels...), "feedback-"+strings.ToLower(i.Category)),
 	}}
 	var out struct {
 		Key string `json:"key"`
@@ -117,6 +118,7 @@ type GitLab struct {
 	BaseURL string // https://gitlab.example.com
 	Token   string // project access token (scope: api)
 	Project string // numeric id or "group/project"
+	Labels  []string
 	HTTP    *http.Client
 }
 
@@ -125,7 +127,7 @@ func (g GitLab) Create(ctx context.Context, i Issue) (string, string, error) {
 	payload := map[string]any{
 		"title":       i.Summary(),
 		"description": i.Body(),
-		"labels":      "gca-portal,feedback::" + strings.ToLower(i.Category),
+		"labels":      strings.Join(append(append([]string{}, g.Labels...), "feedback::"+strings.ToLower(i.Category)), ","),
 	}
 	var out struct {
 		IID    int    `json:"iid"`

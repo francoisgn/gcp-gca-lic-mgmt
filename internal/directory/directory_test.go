@@ -2,6 +2,7 @@ package directory
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"regexp"
 	"testing"
@@ -54,7 +55,7 @@ func TestHTTPClientAgainstSimulator(t *testing.T) {
 	srv := httptest.NewServer((&Simulator{}).Handler("secret"))
 	defer srv.Close()
 	ctx := context.Background()
-	c := NewHTTPClient(srv.URL, "secret")
+	c := NewHTTPClient(HTTPOptions{BaseURL: srv.URL, APIKey: "secret"})
 	a, err := c.Lookup(ctx, "jane.doe@example.com")
 	if err != nil || a.Email != "jane.doe@example.com" {
 		t.Fatalf("lookup: %+v %v", a, err)
@@ -68,7 +69,28 @@ func TestHTTPClientAgainstSimulator(t *testing.T) {
 	} else if e, ok := err.(*HTTPError); !ok || e.Code != 503 {
 		t.Fatalf("err = %v (%T)", err, he)
 	}
-	if _, err := NewHTTPClient(srv.URL, "wrong").Lookup(ctx, "jane.doe@example.com"); err == nil {
+	if _, err := NewHTTPClient(HTTPOptions{BaseURL: srv.URL, APIKey: "wrong"}).Lookup(ctx, "jane.doe@example.com"); err == nil {
 		t.Fatal("bad API key accepted")
+	}
+}
+
+// The field mapping and the path template adapt to another directory contract.
+func TestHTTPClientMapping(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/people/jane.doe@example.com" || r.Header.Get("X-API-Key") != "k" {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(`{"state":"OK","org":{"site":"PRS","bu":412,"gps":"a3f09c1e"}}`))
+	}))
+	defer srv.Close()
+	c := NewHTTPClient(HTTPOptions{BaseURL: srv.URL, Path: "/people/{email}", AuthType: "header", AuthHeader: "X-API-Key", APIKey: "k",
+		Fields: Fields{Status: "state", Site: "org.site", BusinessUnit: "org.bu", GPSCode: "org.gps"}})
+	a, err := c.Lookup(context.Background(), "jane.doe@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Status != "OK" || a.Site != "PRS" || a.BusinessUnit != "412" || a.GPSCode != "a3f09c1e" {
+		t.Fatalf("mapped account = %+v", a)
 	}
 }

@@ -1,0 +1,16 @@
+GCA License Portal
+Copyright 2026 The gcp-gca-lic-mgmt authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Trademarks
+----------
+Google, Google Cloud, Gemini and Gemini Code Assist are trademarks of
+Google LLC. This project is an independent, community tool: it is not
+affiliated with, sponsored or endorsed by Google. The four-pointed sparkle
+used as logo is an original drawing; the names are used only to describe
+what the software manages.
+
+Third-party components
+----------------------
+See THIRD_PARTY_NOTICES.md.

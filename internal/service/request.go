@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -77,11 +78,29 @@ func (s *Service) CheckDirectory(ctx context.Context, user auth.Identity, in For
 		req.Status, req.TrainingAck, req.Duration, req.Answers = domain.ReqDraft, true, dur, answers
 	}
 
-	// Ask the directory (the user is waiting: UX timeout of the directory).
-	dctx, cancel := context.WithTimeout(telemetry.WithKind(ctx, telemetry.KindUX), s.Cfg.DirectoryTimeout)
-	defer cancel()
-	acc, lookupErr := s.Directory.Lookup(dctx, email)
-	outcome, reason := s.evaluateDirectory(acc, lookupErr)
+	var (
+		acc       directory.Account
+		lookupErr error
+		outcome   domain.DirectoryOutcome
+		reason    string
+	)
+	if s.Policy.IsExternal(email) {
+		// External accounts are never approved automatically: straight to the
+		// "functional KO" choice (escalation possible), with no dependency on
+		// the directory. Its attributes are fetched best effort for the admins.
+		dctx, cancel := context.WithTimeout(telemetry.WithKind(ctx, telemetry.KindUX), 2*time.Second)
+		acc, _ = s.Directory.Lookup(dctx, email)
+		cancel()
+		outcome, reason = domain.DirFunctionalKO, ExternalReason
+	} else {
+		// Ask the directory (the user is waiting: UX timeout of the directory).
+		dctx, cancel := context.WithTimeout(telemetry.WithKind(ctx, telemetry.KindUX), s.Cfg.DirectoryTimeout)
+		acc, lookupErr = s.Directory.Lookup(dctx, email)
+		cancel()
+		if outcome, reason, err = s.evaluateDirectory(ctx, email, acc, lookupErr); err != nil {
+			return nil, err
+		}
+	}
 
 	now := s.Now()
 	s.applyDirectory(req, acc, outcome, reason, now)
@@ -109,6 +128,7 @@ func (s *Service) CheckDirectory(ctx context.Context, user auth.Identity, in For
 		res.BufferPosition = buf.Position
 		res.BufferTotal, _ = s.DB.BufferDepth(ctx)
 		res.Steps = s.stepsFor(req, buf)
+		s.notifyBuffered(ctx, req, domain.StageDirectory)
 		return res, nil
 	case domain.DirFunctionalKO:
 		req.Status = domain.ReqDirectoryKO
@@ -130,20 +150,47 @@ func (s *Service) CheckDirectory(ctx context.Context, user auth.Identity, in For
 	return res, nil
 }
 
+// ExternalReason is shown to external accounts (never auto-approved).
+const ExternalReason = "External accounts are never approved automatically. You can escalate your request to an administrator."
+
 // evaluateDirectory turns a directory answer into an outcome.
-func (s *Service) evaluateDirectory(acc directory.Account, err error) (domain.DirectoryOutcome, string) {
+func (s *Service) evaluateDirectory(ctx context.Context, email string, acc directory.Account, err error) (domain.DirectoryOutcome, string, error) {
 	switch {
 	case err == nil:
-		if ok, reason := s.Policy.Eligibility.Evaluate(acc.Status, acc.BusinessUnit, acc.GPSCode); !ok {
-			return domain.DirFunctionalKO, reason
+		ok, reason, eerr := s.eligible(ctx, email, acc)
+		if eerr != nil {
+			return "", "", eerr
 		}
-		return domain.DirOK, ""
+		if !ok {
+			return domain.DirFunctionalKO, reason, nil
+		}
+		return domain.DirOK, "", nil
 	case directory.IsNotFound(err):
-		return domain.DirFunctionalKO, "Your account was not found in the enterprise directory."
+		return domain.DirFunctionalKO, "Your account was not found in the enterprise directory.", nil
 	default:
 		// Timeout, 5xx, network, misconfiguration: not the user's fault.
-		return domain.DirTechnicalKO, "The enterprise directory did not answer in time."
+		return domain.DirTechnicalKO, "The enterprise directory did not answer in time.", nil
 	}
+}
+
+// eligible applies the automatic approval rules: not an external account,
+// directory status and GPS code format (policy.yaml), GPS code present in the
+// allowlist managed by the administrators (database).
+func (s *Service) eligible(ctx context.Context, email string, acc directory.Account) (bool, string, error) {
+	if s.Policy.IsExternal(email) {
+		return false, ExternalReason, nil
+	}
+	if ok, reason := s.Policy.Eligibility.Evaluate(acc.Status, acc.BusinessUnit, acc.GPSCode); !ok {
+		return false, reason, nil
+	}
+	allowed, err := s.DB.IsGPSAllowed(ctx, acc.GPSCode)
+	if err != nil {
+		return false, "", err
+	}
+	if !allowed {
+		return false, fmt.Sprintf("Your GPS code (%s) is not in the list of codes authorized for automatic approval.", maskGPS(acc.GPSCode)), nil
+	}
+	return true, "", nil
 }
 
 // applyDirectory copies the directory answer into the request.
@@ -215,7 +262,11 @@ func (s *Service) Escalate(ctx context.Context, user auth.Identity, requestID in
 		}
 		return q.UpdateRequest(ctx, req)
 	})
-	return req, err
+	if err != nil {
+		return nil, err
+	}
+	s.notifyEscalated(ctx, req)
+	return req, nil
 }
 
 // ExitRequest closes a request in functional KO at the user's choice.

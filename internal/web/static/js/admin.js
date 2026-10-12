@@ -71,6 +71,30 @@
     } catch (err) { toast(err.message, 'ko'); }
   })));
 
+  // GPS codes allowlist.
+  const gps = document.getElementById('gps-form');
+  gps.addEventListener('submit', (e) => {
+    e.preventDefault();
+    busy(gps.querySelector('button[type="submit"]'), async () => {
+      try {
+        const res = await api('POST', '/api/admin/gps', { codes: gps.querySelector('#gps-codes').value, description: gps.querySelector('#gps-description').value });
+        toast(`${res.added} code(s) added.`, 'ok');
+        setTimeout(() => location.reload(), 900);
+      } catch (err) { toast(err.message, 'ko'); }
+    });
+  });
+  document.querySelectorAll('[data-remove-gps]').forEach((btn) => btn.addEventListener('click', async () => {
+    const code = btn.dataset.removeGps;
+    const { ok } = await confirm({ title: `Remove GPS code ${code}?`, text: 'New requests with this code will need an administrator. Existing licenses are kept and flagged by the nightly directory check.', confirmLabel: 'Remove', danger: true });
+    if (!ok) return;
+    try { await api('DELETE', `/api/admin/gps/${encodeURIComponent(code)}`); location.reload(); } catch (err) { toast(err.message, 'ko'); }
+  }));
+
+  // Notifications: show the text version of an e-mail.
+  document.querySelectorAll('[data-view-mail]').forEach((btn) => btn.addEventListener('click', () => {
+    confirm({ title: btn.dataset.subject, text: btn.dataset.body, confirmLabel: 'Close', pre: true });
+  }));
+
   // Assign.
   const assign = document.getElementById('assign-form');
   assign.addEventListener('submit', (e) => {

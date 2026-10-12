@@ -130,7 +130,7 @@ func run() error {
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("listening", "port", cfg.Port, "mode", cfg.Mode, "env", cfg.Env, "google", cfg.GoogleMode,
+		slog.Info("listening", "port", cfg.Port, "mode", cfg.Mode, "env", cfg.Env, "settings", cfg.SettingsFile, "google", cfg.GoogleMode,
 			"directory", cfg.DirectoryMode, "auth", cfg.AuthMode, "version", version)
 		errCh <- httpServer.ListenAndServe()
 	}()
@@ -187,7 +187,12 @@ func wireIntegrations(ctx context.Context, cfg *config.Config, rec *telemetry.Re
 	// Enterprise directory.
 	var dir directory.Client = &directory.Simulator{MaxLatency: cfg.SimMaxLatency, FailureRate: cfg.SimFailureRate}
 	if cfg.DirectoryMode == "http" {
-		dir = directory.NewHTTPClient(cfg.DirectoryURL, cfg.DirectoryAPIKey)
+		f := cfg.DirectoryFields
+		dir = directory.NewHTTPClient(directory.HTTPOptions{
+			BaseURL: cfg.DirectoryURL, Path: cfg.DirectoryLookupPath, EmailParam: cfg.DirectoryEmailParam,
+			AuthType: cfg.DirectoryAuthType, AuthHeader: cfg.DirectoryAuthHeader, APIKey: cfg.DirectoryAPIKey,
+			Fields: directory.Fields{Status: f.Status, Site: f.Site, BusinessUnit: f.BusinessUnit, GPSCode: f.GPSCode},
+		})
 	}
 	d.Directory = directory.Instrument(dir, rec)
 
@@ -202,9 +207,9 @@ func wireIntegrations(ctx context.Context, cfg *config.Config, rec *telemetry.Re
 	var tr tracker.Tracker = tracker.Log{}
 	switch cfg.TrackerMode {
 	case "jira":
-		tr = tracker.Jira{BaseURL: cfg.JiraURL, User: cfg.JiraUser, Token: cfg.JiraToken, Project: cfg.JiraProject, IssueType: cfg.JiraIssueType}
+		tr = tracker.Jira{BaseURL: cfg.JiraURL, User: cfg.JiraUser, Token: cfg.JiraToken, Project: cfg.JiraProject, IssueType: cfg.JiraIssueType, Labels: cfg.JiraLabels}
 	case "gitlab":
-		tr = tracker.GitLab{BaseURL: cfg.GitLabURL, Token: cfg.GitLabToken, Project: cfg.GitLabProject}
+		tr = tracker.GitLab{BaseURL: cfg.GitLabURL, Token: cfg.GitLabToken, Project: cfg.GitLabProject, Labels: cfg.GitLabLabels}
 	}
 	d.Tracker = tracker.Instrument(tr, rec)
 	return nil
@@ -222,7 +227,9 @@ func jobList(svc *service.Service) []jobs.Job {
 			Cron: "0 */3 * * *", Every: 3 * time.Hour, Timeout: 15 * time.Minute, Run: svc.RefreshSubscriptions},
 		{Name: "purge", Description: "Remove expired licenses and licenses unused for 7 days",
 			Cron: "15 * * * *", Every: time.Hour, Timeout: 15 * time.Minute, Run: svc.Purge},
-		{Name: "housekeeping", Description: "Technical KPI retention (10 days) and job history cleanup",
+		{Name: "directory-recheck", Description: "Monthly re-check of each active license against the enterprise directory (assignment anniversary)",
+			Cron: "30 2 * * *", Every: 24 * time.Hour, Timeout: 30 * time.Minute, Run: svc.RecheckDirectory},
+		{Name: "housekeeping", Description: "Retention: technical KPIs (10 days), job history (30 days), notifications (90 days)",
 			Cron: "30 3 * * *", Every: 24 * time.Hour, Timeout: 10 * time.Minute, Run: svc.Housekeeping},
 	}
 }

@@ -1,0 +1,6 @@
+Hello {{.Name}},
+
+A service did not answer in time during the {{.Step}} step. Your request is saved with priority and retried automatically every {{.RetryEvery}}.
+You will receive an e-mail as soon as it is completed.
+
+Portal: {{.PortalURL}}

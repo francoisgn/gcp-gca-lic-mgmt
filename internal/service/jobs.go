@@ -112,7 +112,10 @@ func (s *Service) retryEntry(ctx context.Context, e store.BufferEntry) (string, 
 		dctx, cancel := context.WithTimeout(telemetry.WithKind(ctx, kind), s.Cfg.DirectoryTimeout)
 		acc, lookupErr := s.Directory.Lookup(dctx, req.UserEmail)
 		cancel()
-		outcome, reason := s.evaluateDirectory(acc, lookupErr)
+		outcome, reason, err := s.evaluateDirectory(ctx, req.UserEmail, acc, lookupErr)
+		if err != nil {
+			return "", err
+		}
 		now := s.Now()
 		switch outcome {
 		case domain.DirTechnicalKO:
@@ -133,8 +136,8 @@ func (s *Service) retryEntry(ctx context.Context, e store.BufferEntry) (string, 
 			if err != nil {
 				return "", err
 			}
-			_ = s.send(ctx, "action_required", req.UserEmail, "Action required on your Gemini Code Assist request",
-				actionMail{mailBase: s.base(req.UserEmail), Reason: reason})
+			s.notify(ctx, EvActionRequired, "action_required", req.UserEmail, "Action required on your Gemini Code Assist request",
+				actionMail{mailBase: s.base(req.UserEmail), Reason: reason}, &req.ID)
 			return "directory_ko", nil
 		}
 		s.applyDirectory(req, acc, outcome, reason, now)

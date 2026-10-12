@@ -24,6 +24,8 @@
     <button class="tab" role="tab" aria-selected="false" data-tab="queue">Waiting list</button>
     <button class="tab" role="tab" aria-selected="false" data-tab="buffer">Buffer</button>
     <button class="tab" role="tab" aria-selected="false" data-tab="actions">Assign &amp; transfer</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="gps">GPS codes <span class="badge badge--plain">{{len $o.GPSCodes}}</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="notifications">Notifications</button>
     <button class="tab" role="tab" aria-selected="false" data-tab="audit">Decisions &amp; audit</button>
   </div>
 
@@ -140,6 +142,49 @@
           <select id="transfer-duration">{{range $p.Durations}}<option value="{{.Code}}" {{if eq .Code $p.DefaultDuration}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
         <div class="actions"><button class="btn btn--primary" type="submit">Transfer</button></div>
       </form>
+    </div>
+  </section>
+
+  {{/* --- GPS codes allowlist -------------------------------------------- */}}
+  <section data-panel="gps" hidden>
+    <div class="split split--aside">
+      <form class="card" id="gps-form">
+        <h3 class="card__title" style="margin-bottom: 4px">Authorize GPS codes</h3>
+        <p class="text-muted">Users whose directory GPS code is in this list are approved automatically (internal accounts only — <code>*{{.Data.External}}@</code> accounts never are). Paste one or several codes separated by spaces, commas or new lines.</p>
+        <div class="field"><label for="gps-codes">GPS code(s)</label><textarea id="gps-codes" rows="3" placeholder="a3f09c1e, b71d22e4" required></textarea></div>
+        <div class="field"><label for="gps-description">Description <span class="text-faint">(optional)</span></label><input id="gps-description" type="text" maxlength="200" placeholder="Team / cost centre"></div>
+        <div class="actions"><button class="btn btn--primary" type="submit">Add</button></div>
+      </form>
+      <div class="card">
+        <div class="card__head"><h3 class="card__title">Authorized codes</h3><span class="text-muted" style="font-size: 13px">Removing a code keeps existing licenses; the nightly check flags them as no longer eligible</span></div>
+        {{- if $o.GPSCodes}}
+        <div class="table-wrap" style="max-height: 480px; overflow: auto"><table>
+          <thead><tr><th>Code</th><th>Description</th><th class="num">Licenses</th><th>Added</th><th></th></tr></thead>
+          <tbody>
+          {{- range $o.GPSCodes}}
+            <tr><td class="mono">{{.Code}}</td><td>{{.Description}}</td><td class="num">{{.Licenses}}</td>
+              <td style="white-space: nowrap">{{date .AddedAt}}<span class="sub">by {{name .AddedBy}}</span></td>
+              <td class="num"><button class="btn btn--sm btn--ghost" type="button" data-remove-gps="{{.Code}}">Remove</button></td></tr>
+          {{- end}}
+          </tbody></table></div>
+        {{- else}}<div class="empty">{{icon "alert"}}<p>The list is empty: no request can be approved automatically.</p></div>{{end}}
+      </div>
+    </div>
+  </section>
+
+  {{/* --- Notifications journal -------------------------------------------- */}}
+  <section data-panel="notifications" hidden>
+    <div class="card">
+      <div class="card__head"><h3 class="card__title">E-mail notifications</h3><span class="text-muted" style="font-size: 13px">Last 100 — events can be disabled in <code>config/policy.yaml</code></span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>When</th><th>Event</th><th>Recipient</th><th>Subject</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {{- range $o.Notifications}}
+          <tr><td>{{datetime .TS}}</td><td class="mono" style="font-size: 12px">{{.Event}}</td><td>{{.Recipient}}</td><td>{{.Subject}}</td>
+            <td>{{if eq .Status "SENT"}}<span class="badge badge--ok">sent</span>{{else if eq .Status "DISABLED"}}<span class="badge badge--plain">disabled</span>{{else}}<span class="badge badge--ko" title="{{str .Error}}">failed</span>{{end}}</td>
+            <td class="num">{{if .BodyText}}<button class="btn btn--sm btn--ghost" type="button" data-view-mail data-subject="{{.Subject}}" data-body="{{.BodyText}}">View</button>{{end}}</td></tr>
+        {{- else}}<tr><td colspan="6" class="table-empty">No notification yet.</td></tr>{{end}}
+        </tbody></table></div>
     </div>
   </section>
 

@@ -54,13 +54,19 @@ type Config struct {
 	CredentialsMode  string // "group", "none" or "fake"
 	CredentialsGroup string // e-mail of the Google group bound to the IAM roles
 
-	// Enterprise directory.
-	DirectoryMode    string // "http" or "simulated"
-	DirectoryURL     string
-	DirectoryAPIKey  string
-	DirectoryTimeout time.Duration
-	SimFailureRate   float64
-	SimMaxLatency    time.Duration
+	// Enterprise directory (config/settings*.yaml, key from Secret Manager).
+	SettingsFile        string
+	DirectoryMode       string // "http" or "simulated"
+	DirectoryURL        string
+	DirectoryLookupPath string
+	DirectoryEmailParam string
+	DirectoryAuthType   string // bearer | header | none
+	DirectoryAuthHeader string
+	DirectoryAPIKey     string
+	DirectoryTimeout    time.Duration
+	DirectoryFields     DirectoryFields
+	SimFailureRate      float64
+	SimMaxLatency       time.Duration
 
 	// E-mail.
 	MailMode     string // "smtp" or "log"
@@ -77,9 +83,11 @@ type Config struct {
 	JiraToken     string
 	JiraProject   string
 	JiraIssueType string
+	JiraLabels    []string
 	GitLabURL     string
 	GitLabToken   string
 	GitLabProject string
+	GitLabLabels  []string
 
 	// Timeouts, caches and limits.
 	UXTimeout        time.Duration // budget for credentials + license during the form submission
@@ -96,12 +104,33 @@ type Config struct {
 	JobsAudience       string // optional: expected OIDC audience of scheduler calls
 }
 
-// Load reads the configuration from the environment and validates it.
+// Load reads the settings file and the environment, then validates.
+// Precedence: environment variable > settings file > built-in default.
 func Load() (*Config, error) {
+	appEnv := env("APP_ENV", "dev")
+	defaultSettings := "config/settings.dev.yaml"
+	if appEnv == "prod" {
+		defaultSettings = "config/settings.yaml"
+	}
+	settingsFile := env("SETTINGS_FILE", defaultSettings)
+	st, err := LoadSettings(settingsFile)
+	if err != nil {
+		return nil, err
+	}
+	d, t, m := st.Directory, st.Tracker, st.Mail
+	dirKeyEnv := or(d.Auth.SecretEnv, "DIRECTORY_API_KEY")
+	gitlabTokenEnv := or(t.GitLab.TokenSecretEnv, "GITLAB_TOKEN")
+	jiraTokenEnv := or(t.Jira.TokenSecretEnv, "JIRA_TOKEN")
+	smtpPasswordEnv := or(m.SMTP.PasswordSecretEnv, "SMTP_PASSWORD")
+	smtpPort := m.SMTP.Port
+	if smtpPort == 0 {
+		smtpPort = 587
+	}
+
 	c := &Config{
 		Mode:        env("APP_MODE", "all"),
 		Port:        env("PORT", "8080"),
-		Env:         env("APP_ENV", "dev"),
+		Env:         appEnv,
 		BaseURL:     strings.TrimRight(env("BASE_URL", "http://localhost:8080"), "/"),
 		DatabaseURL: env("DATABASE_URL", "postgres://gcalm:gcalm@localhost:5432/gcalm?sslmode=disable"),
 
@@ -109,8 +138,9 @@ func Load() (*Config, error) {
 		IAPAudience:    env("IAP_AUDIENCE", ""),
 		DevDefaultUser: env("DEV_DEFAULT_USER", "jane.doe@example.com"),
 
-		RolesFile:  env("ROLES_FILE", "config/roles.yaml"),
-		PolicyFile: env("POLICY_FILE", "config/policy.yaml"),
+		RolesFile:    env("ROLES_FILE", "config/roles.yaml"),
+		PolicyFile:   env("POLICY_FILE", "config/policy.yaml"),
+		SettingsFile: settingsFile,
 
 		GoogleMode:     env("GOOGLE_MODE", "fake"),
 		BillingAccount: env("BILLING_ACCOUNT_ID", ""),
@@ -126,29 +156,39 @@ func Load() (*Config, error) {
 		CredentialsMode:  env("CREDENTIALS_MODE", "fake"),
 		CredentialsGroup: env("CREDENTIALS_GROUP", ""),
 
-		DirectoryMode:    env("DIRECTORY_MODE", "simulated"),
-		DirectoryURL:     strings.TrimRight(env("DIRECTORY_URL", ""), "/"),
-		DirectoryAPIKey:  env("DIRECTORY_API_KEY", ""),
-		DirectoryTimeout: envDuration("DIRECTORY_TIMEOUT", 5*time.Second),
-		SimFailureRate:   envFloat("DIRECTORY_SIM_FAILURE_RATE", 0),
-		SimMaxLatency:    envDuration("DIRECTORY_SIM_MAX_LATENCY", 600*time.Millisecond),
+		DirectoryMode:       env("DIRECTORY_MODE", or(d.Mode, "simulated")),
+		DirectoryURL:        strings.TrimRight(env("DIRECTORY_URL", d.BaseURL), "/"),
+		DirectoryLookupPath: env("DIRECTORY_LOOKUP_PATH", or(d.Lookup.Path, "/v1/accounts")),
+		DirectoryEmailParam: or(d.Lookup.EmailParam, "email"),
+		DirectoryAuthType:   env("DIRECTORY_AUTH_TYPE", or(d.Auth.Type, "bearer")),
+		DirectoryAuthHeader: or(d.Auth.Header, "Authorization"),
+		DirectoryAPIKey:     os.Getenv(dirKeyEnv),
+		DirectoryTimeout:    envDuration("DIRECTORY_TIMEOUT", orDuration(d.Timeout, 5*time.Second)),
+		DirectoryFields: DirectoryFields{
+			Status: or(d.Fields.Status, "status"), Site: or(d.Fields.Site, "site"),
+			BusinessUnit: or(d.Fields.BusinessUnit, "businessUnit"), GPSCode: or(d.Fields.GPSCode, "gpsCode"),
+		},
+		SimFailureRate: envFloat("DIRECTORY_SIM_FAILURE_RATE", d.Simulator.FailureRate),
+		SimMaxLatency:  envDuration("DIRECTORY_SIM_MAX_LATENCY", orDuration(d.Simulator.MaxLatency, 600*time.Millisecond)),
 
-		MailMode:     env("MAIL_MODE", "log"),
-		SMTPHost:     env("SMTP_HOST", "smtp-relay.gmail.com"),
-		SMTPPort:     envInt("SMTP_PORT", 587),
-		SMTPUser:     env("SMTP_USER", ""),
-		SMTPPassword: env("SMTP_PASSWORD", ""),
-		MailFrom:     env("MAIL_FROM", "gca-portal@example.com"),
+		MailMode:     env("MAIL_MODE", or(m.Mode, "log")),
+		SMTPHost:     env("SMTP_HOST", or(m.SMTP.Host, "smtp-relay.gmail.com")),
+		SMTPPort:     envInt("SMTP_PORT", smtpPort),
+		SMTPUser:     env("SMTP_USER", m.SMTP.User),
+		SMTPPassword: os.Getenv(smtpPasswordEnv),
+		MailFrom:     env("MAIL_FROM", or(m.From, "gca-portal@example.com")),
 
-		TrackerMode:   env("TRACKER_MODE", "log"),
-		JiraURL:       strings.TrimRight(env("JIRA_URL", ""), "/"),
-		JiraUser:      env("JIRA_USER", ""),
-		JiraToken:     env("JIRA_TOKEN", ""),
-		JiraProject:   env("JIRA_PROJECT", ""),
-		JiraIssueType: env("JIRA_ISSUE_TYPE", "Task"),
-		GitLabURL:     strings.TrimRight(env("GITLAB_URL", "https://gitlab.com"), "/"),
-		GitLabToken:   env("GITLAB_TOKEN", ""),
-		GitLabProject: env("GITLAB_PROJECT", ""),
+		TrackerMode:   env("TRACKER_MODE", or(t.Mode, "log")),
+		JiraURL:       strings.TrimRight(env("JIRA_URL", t.Jira.BaseURL), "/"),
+		JiraUser:      env("JIRA_USER", t.Jira.User),
+		JiraToken:     os.Getenv(jiraTokenEnv),
+		JiraProject:   env("JIRA_PROJECT", t.Jira.Project),
+		JiraIssueType: env("JIRA_ISSUE_TYPE", or(t.Jira.IssueType, "Task")),
+		JiraLabels:    t.Jira.Labels,
+		GitLabURL:     strings.TrimRight(env("GITLAB_URL", or(t.GitLab.BaseURL, "https://gitlab.com")), "/"),
+		GitLabToken:   os.Getenv(gitlabTokenEnv),
+		GitLabProject: env("GITLAB_PROJECT", t.GitLab.Project),
+		GitLabLabels:  t.GitLab.Labels,
 
 		UXTimeout:        envDuration("UX_TIMEOUT", 10*time.Second),
 		JobCallTimeout:   envDuration("JOB_CALL_TIMEOUT", 30*time.Second),
@@ -214,11 +254,15 @@ func (c *Config) validate() error {
 	if c.DirectoryMode == "http" && c.DirectoryURL == "" {
 		errs = append(errs, "DIRECTORY_URL is required when DIRECTORY_MODE=http")
 	}
+	oneOf("directory.auth.type", c.DirectoryAuthType, "bearer", "header", "none")
+	if c.DirectoryMode == "http" && c.DirectoryAuthType != "none" && c.DirectoryAPIKey == "" {
+		errs = append(errs, "the directory API key is missing (secret env named by directory.auth.secret_env)")
+	}
 	if c.TrackerMode == "jira" && (c.JiraURL == "" || c.JiraToken == "" || c.JiraProject == "") {
-		errs = append(errs, "JIRA_URL, JIRA_TOKEN and JIRA_PROJECT are required when TRACKER_MODE=jira")
+		errs = append(errs, "tracker.jira base_url / project and the Jira token are required when the tracker mode is jira")
 	}
 	if c.TrackerMode == "gitlab" && (c.GitLabToken == "" || c.GitLabProject == "") {
-		errs = append(errs, "GITLAB_TOKEN and GITLAB_PROJECT are required when TRACKER_MODE=gitlab")
+		errs = append(errs, "tracker.gitlab project and the GitLab token are required when the tracker mode is gitlab")
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("invalid configuration:\n  - %s", strings.Join(errs, "\n  - "))

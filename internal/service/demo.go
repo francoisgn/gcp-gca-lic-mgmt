@@ -90,6 +90,14 @@ func (s *Service) SeedDemo(ctx context.Context) error {
 	if err := s.Fake.SetSeats(12); err != nil {
 		return err
 	}
+	// GPS codes authorized for automatic approval (managed in Admin → GPS codes).
+	teams := []string{"Platform engineering", "Data & AI", "Embedded software", "Cloud operations", "Quality & test",
+		"Digital factory", "Cybersecurity", "Product lines A", "Product lines B", "R&D tooling", "Mobile apps", "Customer portal"}
+	for i, code := range directory.SimulatorGPSCodes {
+		if _, err := s.DB.AddGPSCodes(ctx, []string{code}, teams[i%len(teams)], "super.admin@example.com"); err != nil {
+			return err
+		}
+	}
 	// Assigned directly in the Google console: shows up as a GOOGLE_ONLY deviation.
 	if err := s.Fake.Seed("console.only@example.com", s.Now().AddDate(0, 0, -3), nil); err != nil {
 		return err
@@ -113,7 +121,10 @@ func (s *Service) SeedDemo(ctx context.Context) error {
 		if err := s.DB.CreateRequest(ctx, r); err != nil {
 			return nil, err
 		}
-		outcome, reason := s.evaluateDirectory(acc, nil)
+		outcome, reason, err := s.evaluateDirectory(ctx, email, acc, nil)
+		if err != nil {
+			return nil, err
+		}
 		s.applyDirectory(r, acc, outcome, reason, created.Add(time.Minute))
 		if err := s.DB.UpdateRequest(ctx, r); err != nil {
 			return nil, err
@@ -133,7 +144,7 @@ func (s *Service) SeedDemo(ctx context.Context) error {
 		{"adam.king@example.com", 4, domain.SourceAuto, "7d", 1},
 		{"zoe.wright@example.com", 2, domain.SourceAuto, "3M", 0.3},
 		{"jules.scott@example.com", 1, domain.SourceAuto, "1M", -1},
-		{"sacha.green@example.com", 0.2, domain.SourceAuto, "6M", -1},
+		{"sacha.green.ext@example.com", 0.2, domain.SourceAdmin, "6M", -1}, // external: admin approval only
 	}
 	for _, d := range actives {
 		at := ago(d.daysAgo)
@@ -252,6 +263,18 @@ func (s *Service) SeedDemo(ctx context.Context) error {
 			return err
 		}
 	}
+	// An external account waiting for an administrator.
+	{
+		r, err := newRequest("lisa.martin.ext@example.com", ago(0.3), domain.ReqPendingAdmin, "1M")
+		if err != nil {
+			return err
+		}
+		r.EscalatedAt, r.EscDivision, r.EscEntity = ptr(ago(0.3)), ptr("Engineering"), ptr("Partner team")
+		r.EscProject, r.EscComment = ptr("Payments API migration"), ptr("Contractor on a 3-month mission, sponsored by my manager.")
+		if err := s.DB.UpdateRequest(ctx, r); err != nil {
+			return err
+		}
+	}
 	for _, days := range []float64{10, 4} {
 		r, err := newRequest("liam.ko@example.com", ago(days), domain.ReqRejected, "6M")
 		if err != nil {
@@ -307,6 +330,43 @@ func (s *Service) SeedDemo(ctx context.Context) error {
 	if err := exec(`INSERT INTO deviations (user_email, subscription_id, kind, detected_at, last_seen_at, resolved_at, resolution, resolved_by)
 		VALUES ('old.console@example.com',$1,'GOOGLE_ONLY',$2,$2,$3,'REMOVED_FROM_GOOGLE','super.admin@example.com')`, cur.ID, ago(12), ago(9)); err != nil {
 		return err
+	}
+
+	// --- Monthly directory re-check results (inventory flags) ----------------------------
+	if err := exec(`UPDATE license_assignments SET dir_checked_at = now() - interval '3 days', dir_check_result = 'OK',
+		dir_current_status = 'OK', dir_current_site = site, dir_current_business_unit = business_unit, dir_current_gps_code = gps_code
+		WHERE ended_at IS NULL AND assigned_at < now() - interval '10 days'`); err != nil {
+		return err
+	}
+	if err := exec(`UPDATE license_assignments SET dir_check_result = 'CHANGED', dir_current_site = 'MUN',
+		drift_fields = '{site}', drift_detected_at = now() - interval '2 days' WHERE user_email = 'chloe.hall@example.com' AND ended_at IS NULL`); err != nil {
+		return err
+	}
+	if err := exec(`UPDATE license_assignments SET dir_check_result = 'INELIGIBLE', dir_current_gps_code = '0badc0de',
+		drift_fields = '{gps_code}', drift_detected_at = now() - interval '1 day',
+		ineligible_reason = 'Your GPS code (0b••••de) is not in the list of codes authorized for automatic approval.'
+		WHERE user_email = 'hugo.allen@example.com' AND ended_at IS NULL`); err != nil {
+		return err
+	}
+	if err := exec(`UPDATE license_assignments SET dir_check_result = 'ERROR', dir_check_error = 'context deadline exceeded'
+		WHERE user_email = 'ethan.clark@example.com' AND ended_at IS NULL`); err != nil {
+		return err
+	}
+
+	// --- Notification journal (history) ------------------------------------------------------
+	for _, n := range []struct{ event, to, subject string }{
+		{EvLicenseAssigned, "olivia.brown@example.com", "Your Gemini Code Assist license is active"},
+		{EvQueued, "noah.wilson@example.com", "You are in the Gemini Code Assist waiting list"},
+		{EvRequestEscalated, "mia.ko@example.com", "Your Gemini Code Assist request is under review"},
+		{EvAdminEscalation, "alex.martin@example.com", "[GCA portal] New request to review: mia.ko@example.com"},
+		{EvRequestRejected, "liam.ko@example.com", "Your Gemini Code Assist request was rejected"},
+		{EvRemovedUnused, "jane.doe@example.com", "Your Gemini Code Assist license was removed"},
+		{EvBuffered, "sofia.edslow@example.com", "Your Gemini Code Assist request is delayed"},
+	} {
+		if err := s.DB.InsertNotification(ctx, store.Notification{Event: n.event, Recipient: n.to, Subject: n.subject,
+			BodyText: "(demo data)", Status: "SENT"}); err != nil {
+			return err
+		}
 	}
 
 	// --- Daily stats and technical KPIs ---------------------------------------------------

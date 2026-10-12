@@ -1,6 +1,6 @@
 Hello {{.Name}},
 
-A Gemini Code Assist license and the cloud permissions required to use it have been assigned to {{.Email}}.
+{{if .ApprovedBy}}{{.ApprovedBy}} approved your request: a{{else}}A{{end}} Gemini Code Assist license and the cloud permissions required to use it have been assigned to {{.Email}}.
 
   Request date     : {{date .RequestDate}}
   Assignment date  : {{date .AssignDate}}
