@@ -9,6 +9,7 @@
 | XSS | `html/template` auto-escaping; JS builds DOM with `textContent` only; strict CSP: `script-src 'self'`, no inline script, `frame-ancestors 'none'`. |
 | Abuse / DoS | Per-user token bucket (HTTP 429), shared Google pool snapshot (singleflight + TTL), bounded request bodies (64 KiB), server timeouts. |
 | Secrets | Secret Manager → env vars; nothing secret in git or in the image. Versioned settings only hold the **name** of the variable (`*_secret_env`). |
+| CI/CD | Keyless: GitLab pipelines get a 1-hour token of `gcalm-deployer` through Workload Identity Federation, only for one project and protected refs. The deployer can push images and roll them out, nothing else. |
 | Supply chain | CI on every push: `govulncheck` (known vulnerabilities reachable from the code), `staticcheck`, **gitleaks** on the whole history; Dependabot weekly updates (Go, Actions, Docker, Terraform); tools and actions pinned by version. Public repository: enable *Secret scanning* + *Push protection* and *Private vulnerability reporting* (see `SECURITY.md`). |
 | Least privilege | Custom role limited to license operations on the billing account; IAM bundle only for licensed users; distroless non-root container. |
 | Data | Minimal personal data (e-mail, directory site / BU / GPS code, form answers). GPS code masked in the user UI. Cloud SQL encrypted at rest, TLS-only, PITR backups. Retention: technical KPIs 10 days, job history 30 days, e-mail journal 90 days. |

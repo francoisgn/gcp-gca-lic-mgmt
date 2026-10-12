@@ -91,7 +91,7 @@ notifications:                    # false = e-mail not sent (still journaled as 
 
 | Variable | Default | Description |
 |---|---|---|
-| `APP_MODE` | `all` | `web` (portal), `worker` (jobs), `all` (dev) |
+| `APP_MODE` | `all` | `web` (portal), `worker` (HTTP job endpoints, alternative to Cloud Run jobs), `all` (dev). Cloud Run jobs run `gcalm job <name>` (one run, then exit). |
 | `APP_ENV` | `dev` | `prod` forbids dev authentication and demo data, selects `settings.yaml` |
 | `SETTINGS_FILE` | see above | integration settings file |
 | `ROLES_FILE` / `POLICY_FILE` | `config/…` | |

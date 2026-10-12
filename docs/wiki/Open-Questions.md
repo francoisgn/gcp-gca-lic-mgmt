@@ -29,5 +29,25 @@ Assumptions taken in the current version — to confirm with the business / plat
 | 9 | Feedback tracker | GitLab, configured in `config/settings.yaml` (token in Secret Manager). Jira still supported. |
 | 11 | Escalation notification | Admins (not super admins) receive an e-mail per escalation; the user receives a confirmation. See [[Notifications]]. |
 | 13 | Language of the wiki | English, like the UI and the code. |
-| 14 | KPI mock-ups | Built from the written specification; the Excalidraw boards can be compared by exporting them (PNG / SVG) — the build environment cannot read them. |
+| 14 | KPI mock-ups | Target architecture and wireframe boards received (images) and compared; remaining gaps in the backlog below. |
 | 19 | Approval e-mails | One e-mail when the license is active right away, two (approved, then active) when the user has to wait. |
+| 21 | Who decides on a non-eligible request | The **service team** (admins of `roles.yaml`) only — no approval step by the manager. |
+| 22 | Quotas per division | **None**: one global waiting list. |
+| 23 | Directory refresh of license holders | **Monthly**, on the assignment anniversary (no daily refresh of every profile). |
+| 24 | Scheduled jobs and delivery | Cloud Run jobs executed by Cloud Scheduler; delivery from the internal GitLab with Workload Identity Federation (no key). |
+
+## Backlog — gaps with the target architecture boards
+
+Not scheduled yet; ordered as the migration plan needs them.
+
+| Gap | Why it matters |
+|---|---|
+| **Shadow (read-only) mode**: no write to Google, the group or users; jobs only observe; request form off | Run next to the previous tool with one writer at a time, check KPI parity before the switch |
+| License and group sync every 15 min; landing page reading the database | Freshness and Google API load with thousands of seats |
+| Ops page: job health, alerts (free < 5 %, order change, refusals, drift pool / database / group), license API errors per day; 90-day availability bar | Operations and parity checks |
+| BI layer: BigQuery (replica, daily snapshots, Code Assist usage export), BI page filtered by division / cost center / GPS / site / country | Steering and cost per entity; active users from real usage |
+| Directory profile fields: division, cost center, employee type, manager | BI filters, exports |
+| Exceptions registry (externals, technical accounts, permanent list) with owner, reason and review date | Governance of non-standard licenses |
+| Idle warning e-mail before the 7-day removal | User experience |
+| Training completion checked in the learning platform | Needs its API |
+| Inventory pagination beyond 1,000 rows | Large pools (the mass removal by filter already covers every row) |

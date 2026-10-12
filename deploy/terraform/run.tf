@@ -102,6 +102,11 @@ resource "google_cloud_run_v2_service" "web" {
       }
     }
   }
+  # Terraform creates the service with var.image; later images are rolled out
+  # by CI/CD (scripts/rollout.sh), not by Terraform.
+  lifecycle {
+    ignore_changes = [template[0].containers[0].image, client, client_version]
+  }
   depends_on = [google_secret_manager_secret_iam_member.runtime, google_secret_manager_secret_version.database_url]
 }
 
@@ -123,78 +128,84 @@ resource "google_cloud_run_v2_service_iam_member" "iap_invoker" {
   member   = "serviceAccount:service-${data.google_project.portal.number}@gcp-sa-iap.iam.gserviceaccount.com"
 }
 
-# --- Worker (scheduled jobs, private) ------------------------------------------------
+# --- Scheduled jobs: one Cloud Run job per task (gcalm job <name>) -----------
+# Executed by Cloud Scheduler (scheduler.tf) through the Cloud Run Admin API.
+# A failed run exits non-zero and is retried once by Cloud Run.
 
-resource "google_cloud_run_v2_service" "worker" {
-  name     = local.worker_name
+resource "google_cloud_run_v2_job" "jobs" {
+  for_each = local.jobs
+  name     = "gcalm-${each.key}"
   location = var.region
-  # Cloud Scheduler is outside the VPC: ingress must be "all", access is
-  # restricted by Cloud Run IAM (only the scheduler SA is run.invoker).
-  ingress = "INGRESS_TRAFFIC_ALL"
 
   template {
-    service_account = google_service_account.worker.email
-    scaling {
-      min_instance_count = 0
-      max_instance_count = 1
-    }
-    max_instance_request_concurrency = 4
-    timeout                          = "900s"
-    containers {
-      image = var.image
-      resources {
-        limits = { cpu = "1", memory = "512Mi" }
-      }
-      env {
-        name  = "APP_MODE"
-        value = "worker"
-      }
-      env {
-        name  = "AUTH_MODE"
-        value = "iap" # unused by the worker routes, keeps the prod config consistent
-      }
-      env {
-        name  = "IAP_AUDIENCE"
-        value = "/projects/${data.google_project.portal.number}/locations/${var.region}/services/${local.web_name}"
-      }
-      env {
-        name  = "JOBS_AUDIENCE"
-        value = local.worker_url
-      }
-      env {
-        name  = "JOBS_INVOKER"
-        value = google_service_account.scheduler.email
-      }
-      dynamic "env" {
-        for_each = local.common_env
-        content {
-          name  = env.key
-          value = env.value
+    task_count = 1
+    template {
+      service_account = google_service_account.worker.email
+      max_retries     = 1
+      timeout         = each.value.timeout
+      containers {
+        image = var.image
+        args  = ["job", each.key]
+        resources {
+          limits = { cpu = "1", memory = "512Mi" }
         }
-      }
-      dynamic "env" {
-        for_each = local.secret_env
-        content {
-          name = env.key
-          value_source {
-            secret_key_ref {
-              secret  = google_secret_manager_secret.secrets[env.value].secret_id
-              version = "latest"
+        env {
+          name  = "APP_MODE"
+          value = "worker"
+        }
+        env {
+          name  = "AUTH_MODE"
+          value = "iap" # unused by jobs, keeps the prod config consistent
+        }
+        env {
+          name  = "IAP_AUDIENCE"
+          value = "/projects/${data.google_project.portal.number}/locations/${var.region}/services/${local.web_name}"
+        }
+        dynamic "env" {
+          for_each = local.common_env
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+        dynamic "env" {
+          for_each = local.secret_env
+          content {
+            name = env.key
+            value_source {
+              secret_key_ref {
+                secret  = google_secret_manager_secret.secrets[env.value].secret_id
+                version = "latest"
+              }
             }
           }
         }
+        volume_mounts {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
       }
-      volume_mounts {
-        name       = "cloudsql"
-        mount_path = "/cloudsql"
-      }
-    }
-    volumes {
-      name = "cloudsql"
-      cloud_sql_instance {
-        instances = [google_sql_database_instance.main.connection_name]
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.main.connection_name]
+        }
       }
     }
   }
+  # Terraform creates the job with var.image; later images are rolled out by
+  # CI/CD (scripts/rollout.sh), not by Terraform.
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
   depends_on = [google_secret_manager_secret_iam_member.runtime, google_secret_manager_secret_version.database_url]
+}
+
+# Cloud Scheduler may only execute the jobs.
+resource "google_cloud_run_v2_job_iam_member" "scheduler_runs_jobs" {
+  for_each = local.jobs
+  name     = google_cloud_run_v2_job.jobs[each.key].name
+  location = var.region
+  role     = "roles/run.invoker" # includes run.jobs.run
+  member   = "serviceAccount:${google_service_account.scheduler.email}"
 }

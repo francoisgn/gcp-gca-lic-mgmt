@@ -1,10 +1,13 @@
 // Command gcalm runs the Gemini Code Assist license portal.
 //
-//	gcalm            serve (APP_MODE=web | worker | all)
-//	gcalm migrate    apply database migrations and exit
+//	gcalm             serve (APP_MODE=web | worker | all)
+//	gcalm migrate     apply database migrations and exit
+//	gcalm job <name>  run one scheduled job and exit (Cloud Run jobs)
 //
-// The same image is deployed twice on Cloud Run: "web" (behind IAP) and
-// "worker" (scheduled jobs, invoked by Cloud Scheduler).
+// The same image is deployed as the Cloud Run service "gcalm-web" (behind
+// IAP) and as one Cloud Run job per scheduled task, executed by Cloud
+// Scheduler. APP_MODE=worker (HTTP job endpoints) remains available for
+// platforms without Cloud Run jobs.
 package main
 
 import (
@@ -91,6 +94,12 @@ func run() error {
 	}
 
 	runner := jobs.NewRunner(db, jobList(svc)...)
+	if len(os.Args) > 1 && os.Args[1] == "job" {
+		if len(os.Args) != 3 {
+			return errors.New("usage: gcalm job <name>")
+		}
+		return runJob(ctx, runner, svc, os.Args[2])
+	}
 	// Seats released by an admin action or a purge are served right away;
 	// the scheduled queue job is the safety net.
 	go func() {
@@ -144,6 +153,31 @@ func run() error {
 		sctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		return httpServer.Shutdown(sctx)
+	}
+	return nil
+}
+
+// runJob executes one job and returns (Cloud Run jobs). A failed run returns
+// an error — non-zero exit code — so Cloud Run retries the task; a run
+// skipped because another one holds the lock is a success. Seats released by
+// the job (purge, renewal...) are served right away, as in the long-running
+// modes.
+func runJob(ctx context.Context, runner *jobs.Runner, svc *service.Service, name string) error {
+	res, err := runner.Run(ctx, name, jobs.TriggerScheduler, "")
+	if err != nil {
+		return err
+	}
+	if res.Status == "ERROR" {
+		return fmt.Errorf("job %s: %s", name, res.Error)
+	}
+	select {
+	case <-svc.QueueKicks():
+		if name != "queue" {
+			if _, err := runner.Run(ctx, "queue", jobs.TriggerEvent, ""); err != nil {
+				slog.Error("serve the queue after the job", "job", name, "err", err)
+			}
+		}
+	default:
 	}
 	return nil
 }

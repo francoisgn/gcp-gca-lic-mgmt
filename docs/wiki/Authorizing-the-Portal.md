@@ -90,6 +90,10 @@ curl -s -H "Authorization: Bearer $(gcloud auth print-access-token --impersonate
   "https://cloudcommerceconsumerprocurement.googleapis.com/v1/billingAccounts/$BILLING/orders"
 ```
 
+## CI/CD identity
+
+Deliveries from GitLab use a third identity, `gcalm-deployer`, reached without key through Workload Identity Federation and limited to image push and rollout — see [[Continuous Integration]].
+
 ## Why service accounts and not an account "with rights"?
 
 | Option | Verdict |

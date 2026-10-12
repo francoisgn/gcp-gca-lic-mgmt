@@ -10,7 +10,8 @@
 | 🔴 Entries in *Abandoned after too many retries* | 30 failed attempts; the request is FAILED, its seat released | Fix the cause, then ask the user to submit again (or *Assign* from the admin page). |
 | 🟠 Requests FAILED with `CREDENTIALS: HTTP 403` | The portal service account is not manager of the IAM bundle group | Add it as manager ([[Authorizing the Portal]]), then users resubmit. |
 | 🔴 Deviations | GOOGLE_ONLY: license assigned in the console; DB_ONLY: license removed in the console | Resolve from *Observability → Deviations*. Avoid manual console changes: they bypass the rules. |
-| 🔴 Job failing (alert `gcalm/job_errors`) | *Observability → Scheduled jobs* shows the error | Fix and *Run now*. Jobs are idempotent (safe to re-run). |
+| 🔴 Job failing (alert `gcalm/job_errors`) | *Observability → Scheduled jobs* shows the error; *Cloud Run → Jobs → gcalm-<name> → Executions* for the logs | Fix and *Run now* (or *Execute* the Cloud Run job). Jobs are idempotent (safe to re-run). |
+| 🔴 Bad release | New image misbehaves | Roll the previous image back: re-run the `deploy` job of the previous tag, or `scripts/rollout.sh <previous image> <region>`. |
 | 🟠 Users complain about HTTP 429 | Rate limit per user | Raise `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_BURST` if legitimate. |
 | Need to free seats quickly | — | *Observability → Inventory*: chip *Unused for ≥ 7 days* (or 14 / 30) → *Remove all matching*. Released seats go to the waiting list automatically. |
 | Give a license to a specific person when the pool is full | — | *Admin → Assign & transfer → Transfer* from a holder to the person (atomic; the queue cannot take the seat). |

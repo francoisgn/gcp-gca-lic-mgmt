@@ -7,11 +7,12 @@
   Browser ───────▶ Identity-Aware Proxy ───▶ Cloud Run "gcalm-web"  (APP_MODE=web)
                                                  │  html/template pages + JSON API
                                                  │
-  Cloud Scheduler ──OIDC──▶ Cloud Run "gcalm-worker" (APP_MODE=worker)
-     buffer-retry  */7 min                       │  POST /jobs/{name}
+  Cloud Scheduler ──Run API──▶ Cloud Run jobs "gcalm-<name>"  (gcalm job <name>)
+     buffer-retry  */7 min                       │  one execution per run, retried once
      queue         */7 min                       │
      subscription-refresh  every 3 h             │
      purge         hourly                        │
+     directory-recheck  nightly                  │
      housekeeping  daily                         │
                                                  ▼
                          ┌──────────── same Go binary, same image ────────────┐
@@ -33,10 +34,11 @@
 
 | Need | Service | Why |
 |---|---|---|
-| Run the portal | **Cloud Run** (2 services, 1 image) | Serverless, scales to zero, no cluster to operate. `web` is user-facing; `worker` only runs jobs (no user can reach it). |
+| Run the portal | **Cloud Run** service `gcalm-web` + **Cloud Run jobs** `gcalm-*` (1 image) | Serverless, scales to zero, no cluster to operate. The service is user-facing; each scheduled task is a job execution with no HTTP endpoint at all. |
 | Google SSO | **Identity-Aware Proxy** on Cloud Run | SSO with the Workspace account without writing any OAuth code; signed JWT verified by the app. |
 | State | **Cloud SQL for PostgreSQL 16** | Relational data (queue positions, history, daily KPIs) and transactional guarantees (one open request per user, one active license per user). Tiny volume → 1 vCPU instance. |
-| Scheduled tasks | **Cloud Scheduler** → worker | Managed cron with OIDC authentication and retries; each run is also recorded in the `job_runs` table. |
+| Scheduled tasks | **Cloud Scheduler** → Cloud Run jobs | Managed cron executing the jobs through the Cloud Run Admin API (OAuth token of a dedicated service account); Cloud Run retries a failed execution; each run is also recorded in the `job_runs` table. |
+| Delivery | **GitLab CI/CD** + **Workload Identity Federation** | Keyless: GitLab OIDC token exchanged for a short-lived token of a deployer service account limited to image push and rollout ([[Continuous Integration]]). |
 | Secrets | **Secret Manager** | DB URL, directory API key, tracker token, SMTP password injected as env vars by Cloud Run. |
 | Licenses | **Cloud Commerce Consumer Procurement API** | Official API behind the console "Manage licenses" page. |
 | Credentials | **Cloud Identity Groups API** | Adds / removes the user in the group that carries the Gemini IAM roles. |

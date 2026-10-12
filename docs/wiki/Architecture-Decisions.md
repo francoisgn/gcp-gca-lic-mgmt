@@ -7,10 +7,11 @@ Short records of the structuring choices. Status: ✅ accepted · 🟠 to confir
 - **Decision**: Go 1.26, `html/template`, vanilla JS, Chart.js vendored; a single static binary embedding templates and assets.
 - **Consequences**: no npm supply chain in production, trivial container (distroless), strict CSP possible (no inline script). Rich client interactions are limited to what vanilla JS does comfortably — enough for a progressive form, tables and charts.
 
-## ADR-02 — Cloud Run, two services from one image ✅
-- **Decision**: `gcalm-web` (behind IAP) and `gcalm-worker` (jobs) run the same image with `APP_MODE=web|worker`.
-- **Why two**: Cloud Scheduler must authenticate with an OIDC token checked by Cloud Run IAM, while users go through IAP. Separating them keeps the job endpoints unreachable from users, and lets jobs run long (15 min timeout) without affecting the portal.
-- **Alternative rejected**: Cloud Run *jobs* — one container start per run every 7 minutes is slower and costlier than an idle-to-zero service; GKE — not justified.
+## ADR-02 — One image: a Cloud Run service for the portal, Cloud Run jobs for the scheduled tasks ✅
+- **Decision** (0.1.0-alpha.2, aligned with the target architecture): `gcalm-web` (behind IAP) is a Cloud Run service; each scheduled task is a Cloud Run job `gcalm-<name>` running `gcalm job <name>`, executed by Cloud Scheduler.
+- **Why jobs**: no HTTP endpoint to protect for the jobs, one execution = one log stream and one status, retries by Cloud Run, timeouts up to hours, rollout of the same image as the portal.
+- **Cost**: ~450 short executions a day (two jobs every 7 minutes) — a few euros a month; a container start per run is acceptable for background work.
+- **Kept**: `APP_MODE=worker` (HTTP job endpoints with OIDC) for platforms without Cloud Run jobs. **Rejected**: GKE — not justified.
 
 ## ADR-03 — Cloud SQL for PostgreSQL ✅
 - **Decision**: PostgreSQL 16 (Enterprise edition, 1 vCPU, PITR backups).
@@ -58,3 +59,8 @@ Short records of the structuring choices. Status: ✅ accepted · 🟠 to confir
 
 ## ADR-14 — No account "with rights": the Cloud Run service accounts ✅
 - The portal acts with the identities of its Cloud Run services (ADC, short-lived tokens): no personal account, no key file to store or rotate. Least privilege: a custom role on the billing account (license pool only, no purchase / cancellation) and manager of one group. See [[Authorizing the Portal]].
+
+## ADR-15 — Keyless delivery from GitLab: Workload Identity Federation ✅
+- GitLab gives each pipeline job an OIDC token; Google exchanges it for a short-lived token of `gcalm-deployer` — only for **one GitLab project** and **protected branches / tags** (provider attribute condition). No service account key exists.
+- Least privilege: the deployer pushes images to the portal repository and rolls them out (`roles/run.developer`, act-as the runtime service accounts). Infrastructure changes (`terraform apply`) stay a manual, reviewed step with an administrator identity.
+- Terraform creates the Cloud Run service and jobs, then ignores image changes: rollout and rollback are `scripts/rollout.sh <image>`, from the pipeline or by hand.
