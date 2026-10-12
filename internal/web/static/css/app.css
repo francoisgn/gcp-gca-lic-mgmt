@@ -28,6 +28,13 @@
   --gradient-accent: linear-gradient(90deg, var(--acc-teal) 0%, var(--acc-green) 55%, var(--acc-lime) 100%);
   --gradient-accent-diag: linear-gradient(135deg, var(--acc-teal) 0%, var(--acc-green) 55%, var(--acc-lime) 100%);
 
+  /* Data visualisation gradients (observability only): saturated hues used as
+     thin lines, small bars and faded areas, never as large surfaces. */
+  --viz-violet: linear-gradient(90deg, #7b6cf6, #d77fc0);
+  --viz-blue: linear-gradient(90deg, #5f73f2, #46b3d6);
+  --viz-amber: linear-gradient(90deg, #f2c66d, #ec8f5e);
+  --viz-rose: linear-gradient(90deg, #d77fc0, #e78284);
+
   /* Semantic colours */
   --bg: var(--ctp-crust);
   --bg-elevated: var(--ctp-base);
@@ -457,6 +464,15 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--acc-teal
 .kpi__value { font-family: var(--font-display); font-size: 30px; font-weight: 900; line-height: 1.2; margin-top: var(--s-1); }
 .kpi__sub { font-size: 12px; color: var(--text-muted); }
 .kpi--ok .kpi__value { color: var(--ok); } .kpi--warn .kpi__value { color: var(--warn); } .kpi--ko .kpi__value { color: var(--ko); }
+/* Ratio bar (observability "dashboard gradients", DESIGN.md §6) */
+.kpi__bar { height: 6px; border-radius: var(--r-pill); background: var(--surface-2); overflow: hidden; margin: var(--s-3) 0 var(--s-2); }
+.kpi__bar span { display: block; height: 100%; min-width: 6px; border-radius: inherit; background: var(--viz-violet); box-shadow: 0 0 10px rgba(123, 108, 246, 0.25); }
+.kpi__bar--blue span { background: var(--viz-blue); box-shadow: 0 0 10px rgba(95, 115, 242, 0.25); }
+.kpi__bar--amber span { background: var(--viz-amber); box-shadow: 0 0 10px rgba(242, 198, 109, 0.2); }
+.kpi__bar--rose span { background: var(--viz-rose); box-shadow: 0 0 10px rgba(215, 127, 192, 0.2); }
+.kpi__bar--green span { background: var(--gradient-accent); }
+.kpi__foot { display: flex; justify-content: space-between; gap: var(--s-2); align-items: baseline; }
+.kpi__pct { font: 500 12px/1 var(--font-mono); color: var(--text-muted); white-space: nowrap; }
 .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: var(--s-5); }
 @media (max-width: 720px) { .charts { grid-template-columns: 1fr; } }
 .chart { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-4) var(--s-5) var(--s-5); min-width: 0; }
