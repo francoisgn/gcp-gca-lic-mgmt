@@ -21,7 +21,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Mirror docs/wiki to the wiki repository
         env:
           # A fine-grained token with "contents: write" can be stored as
