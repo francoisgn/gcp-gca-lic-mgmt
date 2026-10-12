@@ -13,6 +13,7 @@
 
 **Operate**
 - [[Scheduled Jobs]]
+- [[Notifications]]
 - [[KPIs and Observability]]
 - [[Runbook]]
 - [[Security]]
@@ -22,6 +23,7 @@
 - [[Local Development]]
 - [[Testing]]
 - [[Deployment]]
+- [[Continuous Integration]]
 
 **Design**
 - [[Design Language]]

@@ -15,7 +15,11 @@ Page *Observability* (admins). Data from `/api/obs/*`, charts with Chart.js.
 | Queue depth per day | users waiting at the end of each day |
 | Buffer depth per day | pending buffer entries at the end of each day |
 | **Deviations per day** | open deviations at the end of each day. Back to 0 only when every deviation is resolved: *Remove from Google* / *Back-port* (GOOGLE_ONLY), *Close record* / *Re-assign* (DB_ONLY), or self-healed |
-| Inventory | active licenses with filter chips, selection and removal (see [[Functional Specification]]) |
+| **External licenses** | active licenses held by external accounts (`*.ext@`): count and **ratio of active licenses (%)** |
+| Directory data changed | active licenses whose site / BU / GPS code changed since assignment (monthly re-check) |
+| No longer eligible | active licenses that would not be auto-approved today |
+| Re-check failed | last re-check in error (+ number never checked yet) |
+| Inventory | active licenses with filter chips (incl. account type and directory check), selection and removal (see [[Functional Specification]]) |
 
 Period selector: 14 / 30 / 90 days.
 

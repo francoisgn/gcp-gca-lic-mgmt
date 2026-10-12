@@ -41,7 +41,7 @@ When the user has no active license, a **Previous licenses** table shows each fo
 1. A → D in the browser (no server call). Server-side validation is repeated on submission.
 2. **W** — `POST /api/request/directory`: the request is stored as a draft and the directory is called (5 s).
    - ✅ OK → site, business unit, masked GPS code; the answers are frozen.
-   - 🔴 functional KO (account KO, no / invalid / non-eligible GPS code, unknown account) → *Withdraw* or *Escalate*. Escalation (**W1**) asks for division, entity, project and an optional comment, then lists the admins to contact.
+   - 🔴 functional KO (account KO, no / invalid GPS code, GPS code not in the allowlist, unknown account, **external account**) → *Withdraw* or *Escalate*. Escalation (**W1**) asks for division, entity, project and an optional comment, then lists the admins to contact.
    - 🟠 technical KO (timeout, 5xx, network) → buffer.
 3. **X Y Z** — `POST /api/request/{id}/submit` with a loading animation; **10 s budget**:
    - seat available → credentials, license, e-mail → 🟢 *Your license is active*;
@@ -55,7 +55,9 @@ Request date, assignment date, planned end · how to set up Gemini Code Assist i
 
 | Rule | Detail |
 |---|---|
-| Auto-approval | Training ✓ + directory account status `OK` + GPS code matching `policy.eligibility` (format, optional allow-lists of GPS codes / business units) |
+| Auto-approval | Internal account + training ✓ + directory account status `OK` + GPS code with the right format (`policy.eligibility`) **and present in the GPS codes table** (Admin → GPS codes) + business unit allowed (optional list) |
+| External accounts | `firstname.lastname.ext@domain` (suffix `policy.accounts.external_suffix`) → **never auto-approved**: functional KO *"External accounts are never approved automatically"*, escalation possible, an admin decides. |
+| Monthly directory re-check | Every active license is re-checked against the directory once a month (assignment anniversary, nightly job). Site / BU / GPS changes → flag **Data changed**; would no longer be auto-approved → flag **No longer eligible**. Nothing is removed automatically. See [[Scheduled Jobs]]. |
 | Unused license | No usage for `unused_days` (7) → removed (*Unused*). Last activity = latest of assignment, subscription migration, last usage stored, Google `recentUsageTime` (refreshed by Google within 24 h). |
 | Expiry | Requested duration elapsed → removed (*Expired*). |
 | Queue | Served by priority (subscription rollover 10 > buffer 5 > normal 0) then FIFO, as soon as a seat is released (event) and every 7 min (job). |
@@ -72,11 +74,15 @@ Request date, assignment date, planned end · how to set up Gemini Code Assist i
 | Waiting list | Position, waiting since, priority → remove a user |
 | Buffer | Stage, attempts, last error → **Retry now**; abandoned entries |
 | Assign & transfer | Assign a license to an e-mail (source admin) · **Transfer** a license from A to B atomically (A ends with *Admin removal*) |
+| GPS codes | Allowlist of GPS codes approved automatically: add one or several codes (comma / space / new line separated, 8 hex characters) with a description, remove a code (existing licenses are kept and flagged by the next directory re-check). Shows the number of active licenses per code. Audited. |
+| Notifications | Journal of the e-mails sent (event, recipient, status SENT / FAILED / DISABLED), *View* shows the text. See [[Notifications]]. |
 | Decisions & audit | Last decisions and the audit log of every admin / system action |
 
 ## 4. Observability (admins)
 
-See [[KPIs and Observability]]. Includes the **inventory** of assigned licenses: filter chips (site, business unit, source, unused ≥ 7/14/30 days, expiring within 7/30 days), e-mail search, selection, **Remove selected** and **Remove all matching** (mass removal by criteria, refused if the matching count changed since the preview).
+See [[KPIs and Observability]]. Includes the **inventory** of assigned licenses: filter chips (site, business unit, source, **account: internal / external**, **directory check: data changed / no longer eligible / check failed / never checked**, unused ≥ 7/14/30 days, expiring within 7/30 days), e-mail search, selection, **Remove selected** and **Remove all matching** (mass removal by criteria, refused if the matching count changed since the preview).
+
+Directory column: badge of the last monthly re-check (hover = changed fields, reason or error). Actions on the selection: **Re-check directory** (now, instead of waiting for the anniversary) and **Accept directory changes** (the current directory values become the reference, flag cleared).
 
 Super admins additionally get: **Force subscription refresh**, **Run now** on each job, and (fake mode only) the simulation panel.
 
