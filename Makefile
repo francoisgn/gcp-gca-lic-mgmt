@@ -39,8 +39,8 @@ build: ## Build the binaries into ./bin
 docker: ## Build the container image
 	docker build --build-arg VERSION=$(VERSION) -t gcalm:$(VERSION) .
 
-hero: ## Regenerate the isometric hero illustration
-	node scripts/gen-hero.mjs > internal/web/static/img/hero-laptop.svg
+hero: ## Regenerate the hero illustration (80s desk)
+	node scripts/gen-hero.mjs > internal/web/static/img/hero-desk.svg
 
 clean: ## Remove build outputs and local fake state
 	rm -rf bin .dev

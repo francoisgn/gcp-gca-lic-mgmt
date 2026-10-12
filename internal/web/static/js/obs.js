@@ -14,9 +14,10 @@
   const C = {
     text: '#a6adc8', grid: 'rgba(205, 214, 244, 0.06)',
     green: '#a6e3a1', teal: '#94e2d5', lavender: '#b4befe', blue: '#89b4fa', sapphire: '#74c7ec',
-    peach: '#fab387', yellow: '#f9e2af', red: '#f38ba8', maroon: '#eba0ac', mauve: '#cba6f7',
-    pink: '#f5c2e7', overlay: '#7f849c', flamingo: '#f2cdcd',
-    gem: ['#4796e4', '#847ace', '#c3677f'],
+    peach: '#fab387', yellow: '#f9e2af', red: '#e78284', maroon: '#c98a7d', mauve: '#cba6f7',
+    overlay: '#7f849c', flamingo: '#d9c4b8',
+    // UI accent gradient (faded teal → green → lime), same stops as app.css.
+    acc: ['#4fa596', '#7dbb86', '#bfd38a'], neutral: '#9399b2',
   };
   Chart.defaults.color = C.text;
   Chart.defaults.font.family = 'Roboto, system-ui, sans-serif';
@@ -37,14 +38,6 @@
     charts[id] = new Chart(document.getElementById(id), config);
   }
   const dayLabel = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-  /** Gemini gradient for a canvas. */
-  function gemGradient(ctx) {
-    const { chart } = ctx;
-    if (!chart.chartArea) return C.mauve;
-    const g = chart.ctx.createLinearGradient(chart.chartArea.left, 0, chart.chartArea.right, 0);
-    g.addColorStop(0, C.gem[0]); g.addColorStop(0.5, C.gem[1]); g.addColorStop(1, C.gem[2]);
-    return g;
-  }
   const stackedScales = (extra = {}) => ({
     x: { stacked: true, grid: { display: false } },
     y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, ...extra },
@@ -69,7 +62,7 @@
           { type: 'bar', label: 'Removed: admin', data: neg('unassignAdmin'), backgroundColor: C.red, stack: 'f' },
           { type: 'bar', label: 'Removed: other', data: neg('unassignOther'), backgroundColor: C.maroon, stack: 'f' },
           { type: 'line', label: 'Free seats (end of day)', data: points.map((p) => Math.max(0, (p.seatsTotal ?? 0) - p.assignedEnd)),
-            borderColor: C.mauve, backgroundColor: C.mauve, borderDash: [5, 4], pointRadius: 0, tension: 0.3, stack: 'line' },
+            borderColor: C.acc[2], backgroundColor: C.acc[2], borderDash: [5, 4], pointRadius: 0, tension: 0.3, stack: 'line' },
         ],
       },
       options: {
@@ -89,7 +82,7 @@
       ['− Unused', -sum('unassignUnused'), C.peach], ['− Expired', -sum('unassignExpired'), C.yellow],
       ['− Admin', -sum('unassignAdmin'), C.red], ['− Other', -sum('unassignOther'), C.maroon],
     ];
-    const wfLabels = ['Start'], wfData = [[0, start]], wfColors = [C.blue];
+    const wfLabels = ['Start'], wfData = [[0, start]], wfColors = [C.neutral];
     let level = start;
     for (const [label, delta, color] of steps) {
       wfLabels.push(label);
@@ -97,9 +90,9 @@
       wfColors.push(color);
       level += delta;
     }
-    wfLabels.push('End'); wfData.push([0, last.assignedEnd]); wfColors.push(C.mauve);
+    wfLabels.push('End'); wfData.push([0, last.assignedEnd]); wfColors.push(C.neutral);
     const seats = last.seatsTotal ?? last.assignedEnd;
-    wfLabels.push('Free seats'); wfData.push([last.assignedEnd, Math.max(seats, last.assignedEnd)]); wfColors.push('rgba(203,166,247,0.25)');
+    wfLabels.push('Free seats'); wfData.push([last.assignedEnd, Math.max(seats, last.assignedEnd)]); wfColors.push('rgba(191,211,138,0.22)');
     draw('chart-waterfall', {
       type: 'bar',
       data: { labels: wfLabels, datasets: [{ label: 'Seats', data: wfData, backgroundColor: wfColors, borderRadius: 6, borderSkipped: false }] },
@@ -153,8 +146,8 @@
       draw(id, {
         type: 'line',
         data: { labels, datasets: [
-          { label: 'p50', data: pick('p50'), borderColor: C.blue, backgroundColor: C.blue, tension: 0.3, spanGaps: true, pointRadius: 2 },
-          { label: 'p95', data: pick('p95'), borderColor: C.pink, backgroundColor: C.pink, tension: 0.3, spanGaps: true, pointRadius: 2, borderDash: [4, 3] },
+          { label: 'p50', data: pick('p50'), borderColor: C.acc[0], backgroundColor: C.acc[0], tension: 0.3, spanGaps: true, pointRadius: 2 },
+          { label: 'p95', data: pick('p95'), borderColor: C.acc[2], backgroundColor: C.acc[2], tension: 0.3, spanGaps: true, pointRadius: 2, borderDash: [4, 3] },
         ] },
         options: { scales: { x: { grid: { display: false } }, y: { beginAtZero: true, title: { display: true, text: 'ms' } } } },
       });
@@ -178,8 +171,8 @@
     draw('chart-access', {
       type: 'line',
       data: { labels: (k.accesses || []).map((a) => dayLabel(a.day)), datasets: [
-        { label: 'Page views', data: (k.accesses || []).map((a) => a.pageViews), borderColor: C.sapphire, backgroundColor: `${C.sapphire}22`, fill: true, tension: 0.3, pointRadius: 0 },
-        { label: 'Google license checks', data: (k.accesses || []).map((a) => a.googleChecks), borderColor: C.mauve, backgroundColor: C.mauve, tension: 0.3, pointRadius: 0, borderDash: [5, 4] },
+        { label: 'Page views', data: (k.accesses || []).map((a) => a.pageViews), borderColor: C.acc[2], backgroundColor: `${C.acc[2]}1f`, fill: true, tension: 0.3, pointRadius: 0 },
+        { label: 'Google license checks', data: (k.accesses || []).map((a) => a.googleChecks), borderColor: C.acc[0], backgroundColor: C.acc[0], tension: 0.3, pointRadius: 0, borderDash: [5, 4] },
       ] },
       options: { interaction: { mode: 'index', intersect: false }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true } } },
     });

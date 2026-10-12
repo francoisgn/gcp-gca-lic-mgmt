@@ -2,6 +2,6 @@
 <h1 style="font-family:Lato,Roboto,Arial,sans-serif;font-size:24px;margin:0 0 16px 0;color:#cdd6f4;">Your request is under review</h1>
 <p>Hello {{.Name}},</p>
 <p>Your Gemini Code Assist request could not be approved automatically{{if .Reason}} ({{.Reason}}){{end}}. It has been sent to the administrators with the details you provided.</p>
-{{if .Admins}}<p>Administrators: {{range $i, $a := .Admins}}{{if $i}}, {{end}}<a href="mailto:{{$a}}" style="color:#89b4fa;">{{$a}}</a>{{end}}</p>{{end}}
+{{if .Admins}}<p>Administrators: {{range $i, $a := .Admins}}{{if $i}}, {{end}}<a href="mailto:{{$a}}" style="color:#8fcfba;">{{$a}}</a>{{end}}</p>{{end}}
 <p>You will receive an e-mail with their decision.</p>
 {{template "footer" .}}
