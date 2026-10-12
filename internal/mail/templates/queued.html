@@ -1,0 +1,6 @@
+{{template "header" .}}
+<h1 style="font-family:Lato,Roboto,Arial,sans-serif;font-size:24px;margin:0 0 16px 0;color:#cdd6f4;">You are in the waiting list</h1>
+<p>Hello {{.Name}},</p>
+<p>Your request is validated but every license of the pool is currently assigned. You are <strong>#{{.Position}}</strong> in the waiting list.</p>
+<p>A license will be assigned automatically as soon as one is released; you will receive a confirmation e-mail.</p>
+{{template "footer" .}}

@@ -1,0 +1,19 @@
+# -----------------------------------------------------------------------------
+# Portal roles
+# -----------------------------------------------------------------------------
+# Source of truth for administrators. Changes MUST go through a pull request
+# (review = four-eyes principle, git history = audit trail) and a redeploy.
+#
+#   super_admins : everything admins can do + force the subscription refresh,
+#                  run scheduled jobs on demand, resolve deviations.
+#   admins       : approve / reject escalations, assign / remove / transfer
+#                  licenses, mass removal, observability pages.
+#                  This list (without super admins) is shown to users after an
+#                  escalation so they know whom to contact.
+# -----------------------------------------------------------------------------
+super_admins:
+  - super.admin@example.com
+
+admins:
+  - alex.martin@example.com
+  - sam.lee@example.com

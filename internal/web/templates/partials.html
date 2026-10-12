@@ -1,0 +1,147 @@
+{{/* =========================================================================
+     Shared partials
+     ========================================================================= */}}
+
+{{/* Left panel: progress of the request (steps a → Z). */}}
+{{define "steps"}}
+<div class="card">
+  <div class="eyebrow" style="margin-bottom: 16px">Progress</div>
+  <ol class="steps" id="steps">
+    {{- range $i, $s := .}}
+    <li class="step step--{{$s.State}}" data-step="{{$s.ID}}">
+      <span class="step__icon">{{stepIcon $s.State $i}}</span>
+      <div>
+        <div class="step__label">{{$s.Label}}</div>
+        <div class="step__hint">{{$s.Hint}}</div>
+      </div>
+    </li>
+    {{- end}}
+  </ol>
+</div>
+{{end}}
+
+{{/* Status line at the top of the subscription card. */}}
+{{define "status"}}
+<div class="status-hero">
+  <span class="status-hero__dot {{.Tone}}" aria-hidden="true"></span>
+  <div>
+    <h2>{{.Title}}</h2>
+    {{if .Sub}}<p>{{.Sub}}</p>{{end}}
+  </div>
+</div>
+{{end}}
+
+{{/* Previous licenses of the user (from / to / end reason). */}}
+{{define "history"}}
+{{if .}}
+<div class="card">
+  <div class="card__head">
+    <h3 class="card__title">Previous licenses</h3>
+    <span class="badge badge--plain">{{len .}} record{{if gt (len .) 1}}s{{end}}</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>From</th><th>To</th><th>Duration</th><th>End reason</th></tr></thead>
+      <tbody>
+        {{- range .}}
+        <tr>
+          <td>{{date .AssignedAt}}</td>
+          <td>{{date .EndedAt}}</td>
+          <td>{{durLabel .Duration}}</td>
+          <td>
+            {{- $r := reason .EndReason}}
+            <span class="badge {{if eq $r "Expired"}}badge--info{{else if eq $r "Unused"}}badge--warn{{else}}badge--ko{{end}}">{{$r}}</span>
+          </td>
+        </tr>
+        {{- end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{/* Rejected requests (paginated, 10 per page). Arg: the HomeView. */}}
+{{define "rejected"}}
+{{if .Rejected}}
+<div class="stack">
+  <h3 class="card__title">Rejected requests</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Requested</th><th>Escalation (your input)</th><th>Rejected</th><th>Administrator's reason</th></tr></thead>
+      <tbody>
+        {{- range .Rejected}}
+        <tr>
+          <td>{{datetime .CreatedAt}}<span class="sub">Escalated {{datetime .EscalatedAt}}</span></td>
+          <td>{{str .EscDivision}} · {{str .EscEntity}} · {{str .EscProject}}{{with .EscComment}}<span class="sub">“{{.}}”</span>{{end}}</td>
+          <td>{{datetime .DecidedAt}}<span class="sub">by {{name (str .DecidedBy)}}</span></td>
+          <td>{{str .DecisionReason}}</td>
+        </tr>
+        {{- end}}
+      </tbody>
+    </table>
+  </div>
+  {{if gt .RejectedPages 1}}
+  <nav class="pager" aria-label="Rejected requests pages">
+    {{if gt .RejectedPage 1}}<a class="btn btn--sm btn--ghost" href="?rp={{sub .RejectedPage 1}}">Previous</a>{{end}}
+    <span>Page {{.RejectedPage}} / {{.RejectedPages}}</span>
+    {{if lt .RejectedPage .RejectedPages}}<a class="btn btn--sm btn--ghost" href="?rp={{add .RejectedPage 1}}">Next</a>{{end}}
+  </nav>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+
+{{/* Administrators to contact after an escalation (super admins excluded). */}}
+{{define "admins"}}
+<div class="admins">
+  {{- range .}}
+  <a href="mailto:{{.}}"><span class="avatar" aria-hidden="true">{{initials .}}</span>{{name .}}</a>
+  {{- end}}
+</div>
+{{end}}
+
+{{/* Read-only view of a submitted request (greyed form, case 0.1). Arg: dict-like map {R, Policy}. */}}
+{{define "request-readonly"}}
+{{$r := .R}}
+<div class="form-readonly" aria-disabled="true">
+  <div class="field-grid">
+    <div><label>Training completed</label><input type="text" value="{{if $r.TrainingAck}}Yes{{else}}No{{end}}" readonly></div>
+    <div><label>Duration</label><input type="text" value="{{durLabel $r.Duration}}" readonly></div>
+    {{- range .Policy.Questions}}
+    <div><label>{{.Label}}</label><input type="text" value="{{index $r.Answers .ID}}" readonly></div>
+    {{- end}}
+    {{- if $r.EscalatedAt}}
+    <div><label>Division</label><input type="text" value="{{str $r.EscDivision}}" readonly></div>
+    <div><label>Entity</label><input type="text" value="{{str $r.EscEntity}}" readonly></div>
+    <div><label>Project</label><input type="text" value="{{str $r.EscProject}}" readonly></div>
+    {{- end}}
+  </div>
+  {{- if $r.EscComment}}
+  <div class="field"><label>Comment for administrators</label><textarea readonly>{{str $r.EscComment}}</textarea></div>
+  {{- end}}
+</div>
+{{end}}
+
+{{/* VS Code set-up guide and usage rules (also sent by e-mail). */}}
+{{define "usage"}}
+<details class="disclosure">
+  <summary>Set up Gemini Code Assist in VS Code</summary>
+  <ol class="rules">
+    <li>Install the <strong>Gemini Code Assist</strong> extension (publisher: Google) from the VS Code Marketplace.</li>
+    <li>Click the Gemini Code Assist icon in the activity bar, then <strong>Sign in with Google</strong> with your company account.</li>
+    <li>When prompted, select the Google Cloud project given in your confirmation e-mail.</li>
+    <li>Open a file and start coding: completions appear inline, the chat is in the side panel.</li>
+  </ol>
+  <a href="{{.Links.VSCodeGuide}}" target="_blank" rel="noopener">Official set-up guide</a>
+</details>
+<details class="disclosure">
+  <summary>Usage rules</summary>
+  <ul class="rules">
+    <li><strong class="text-ko">Command-line usage is forbidden</strong>: do not use this license with Gemini CLI or any terminal / agent tool. IDE usage only.</li>
+    <li>Follow the <a href="{{.Links.UsagePolicy}}" target="_blank" rel="noopener">generative-AI usage policy</a>.</li>
+    <li>Complete the <a href="{{.Links.AIUsageTraining}}" target="_blank" rel="noopener">company AI usage training</a> if not done yet.</li>
+    <li>A license not used for {{.UnusedDays}} days is removed automatically and given to the waiting list.</li>
+  </ul>
+</details>
+{{end}}

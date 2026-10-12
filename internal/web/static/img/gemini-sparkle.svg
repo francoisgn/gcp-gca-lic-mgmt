@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Gemini">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4796E4"/>
+      <stop offset=".5" stop-color="#847ACE"/>
+      <stop offset="1" stop-color="#C3677F"/>
+    </linearGradient>
+  </defs>
+  <!-- Four-pointed sparkle with concave edges, Gemini gradient. -->
+  <path d="M12 0C12 6.627 17.373 12 24 12C17.373 12 12 17.373 12 24C12 17.373 6.627 12 0 12C6.627 12 12 6.627 12 0Z" fill="url(#g)"/>
+</svg>

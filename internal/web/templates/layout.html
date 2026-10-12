@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · Gemini Code Assist licenses</title>
+  <link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&family=Open+Sans:wght@400;600&family=Roboto+Mono:wght@400;500&family=Roboto:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="/static/css/app.css?v={{.Version}}">
+</head>
+<body data-page="{{.Nav}}">
+{{- if .Dev}}
+  {{/* Development only: identity switcher to test every role and edge case. */}}
+  <div class="devbar">
+    <form class="container devbar__inner" method="post" action="/dev/login">
+      <span class="badge badge--warn">DEV</span>
+      <span class="text-muted">Signed in as <strong>{{.User.Email}}</strong> — switch identity:</span>
+      <select name="email" aria-label="Switch identity">
+        {{- range .DevUsers}}
+        <option value="{{.Email}}" {{if eq .Email $.User.Email}}selected{{end}}>{{.Label}} — {{.Email}}</option>
+        {{- end}}
+      </select>
+      <input type="hidden" name="back" value="">
+      <button class="btn btn--sm btn--secondary" type="submit">Switch</button>
+    </form>
+  </div>
+{{- end}}
+
+  <header class="topbar">
+    <div class="container topbar__inner">
+      <a class="brand" href="/" aria-label="Gemini Code Assist licenses — home">
+        <img class="brand__logo" src="/static/img/gemini-sparkle.svg" alt="">
+        <span class="brand__name"><b>Gemini</b> <span>Code Assist · Licenses</span></span>
+      </a>
+      <nav class="nav" aria-label="Main">
+        <a href="/" {{if eq .Nav "home"}}aria-current="page"{{end}}>My license</a>
+        {{- if .User.Role.IsAdmin}}
+        <a href="/admin" {{if eq .Nav "admin"}}aria-current="page"{{end}}>Admin{{if .Pending}} <span class="badge badge--count" title="Escalations waiting">{{.Pending}}</span>{{end}}</a>
+        <a href="/observability" {{if eq .Nav "observability"}}aria-current="page"{{end}}>Observability</a>
+        {{- end}}
+        <a href="/feedback" {{if eq .Nav "feedback"}}aria-current="page"{{end}}>Feedback</a>
+      </nav>
+      <div class="topbar__spacer"></div>
+      {{- with .Counter}}
+      {{- $pct := pct .Assigned .Total}}
+      <div class="pool {{if not .Known}}is-unknown{{else if ge .Assigned .Total}}is-full{{else if ge $pct 90}}is-high{{end}}"
+           title="{{if .Known}}{{.Assigned}} of {{.Total}} licenses assigned{{if .Reserved}} — {{.Reserved}} reserved (in flight or buffered){{end}}{{if .Stale}} (cached){{end}}{{else}}Google license pool unreachable{{end}}">
+        <div class="pool__bar"><div class="pool__fill" style="width: {{if .Known}}{{$pct}}{{else}}100{{end}}%"></div></div>
+        {{- if .Known}}
+        <span class="pool__value">{{.Assigned}} / {{.Total}}</span><span class="pool__label">licenses assigned</span>
+        {{- else}}
+        <span class="pool__value">— / —</span><span class="pool__label">pool unavailable</span>
+        {{- end}}
+      </div>
+      {{- end}}
+      {{- if .User.Email}}
+      <div class="user">
+        <span class="avatar" aria-hidden="true">{{.User.Initials}}</span>
+        <span class="user__meta"><span class="user__name">{{.User.DisplayName}}</span><span class="user__role">{{.User.Role.Label}}</span></span>
+      </div>
+      {{- end}}
+    </div>
+  </header>
+
+  <main id="main">
+    {{template "content" .}}
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <span>Gemini Code Assist license portal · v{{.Version}}</span>
+      <span>Google Cloud console is the source of truth for license assignments.</span>
+    </div>
+  </footer>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  {{/* Generic dialog used by app.js (confirmations, reasons). */}}
+  <dialog id="dialog" aria-labelledby="dialog-title">
+    <form method="dialog" class="stack">
+      <h3 id="dialog-title"></h3>
+      <p id="dialog-text" class="text-muted"></p>
+      <div id="dialog-input-wrap" hidden>
+        <label for="dialog-input" id="dialog-input-label">Reason</label>
+        <textarea id="dialog-input" rows="3"></textarea>
+      </div>
+      <div class="actions">
+        <button class="btn btn--primary" value="confirm" id="dialog-confirm">Confirm</button>
+        <button class="btn btn--ghost" value="cancel" formnovalidate>Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  {{- with .JSON}}
+  <script type="application/json" id="page-data">{{.}}</script>
+  {{- end}}
+  <script src="/static/js/app.js?v={{.Version}}"></script>
+  {{block "scripts" .}}{{end}}
+</body>
+</html>

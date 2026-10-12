@@ -1,0 +1,43 @@
+name: Publish wiki
+
+# docs/wiki/ is the source of the GitHub wiki: every change merged on the
+# default branch is mirrored to <repo>.wiki.git.
+# Prerequisite (once): enable the wiki and create any first page in the UI,
+# GitHub only creates the wiki repository at that moment.
+on:
+  push:
+    branches: [master, main]
+    paths: ["docs/wiki/**", ".github/workflows/wiki.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mirror docs/wiki to the wiki repository
+        env:
+          # A fine-grained token with "contents: write" can be stored as
+          # WIKI_TOKEN if the default token is not allowed to push to the wiki.
+          TOKEN: ${{ secrets.WIKI_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki
+          rsync -a --delete --exclude '.git' docs/wiki/ wiki/
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date."
+            exit 0
+          fi
+          git commit -m "Sync wiki from ${GITHUB_SHA::7}"
+          git push origin HEAD

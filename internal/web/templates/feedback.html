@@ -1,0 +1,45 @@
+{{/* Feedback: improvement ideas and issues, forwarded to the issue tracker. */}}
+{{define "content"}}
+<div class="container page">
+  <div class="page__head">
+    <div>
+      <div class="eyebrow">Feedback</div>
+      <h1>Help us improve the portal</h1>
+      <p>Suggest an improvement or report a problem. It becomes a work item for the team; your company identity is attached automatically.</p>
+    </div>
+  </div>
+  <div class="split">
+    <form class="card" id="feedback-form">
+      <div class="field">
+        <label>Category</label>
+        <div class="chips" role="group" aria-label="Category">
+          <button class="chip" type="button" data-category="IMPROVEMENT" aria-pressed="true">Improvement idea</button>
+          <button class="chip" type="button" data-category="BUG" aria-pressed="false">Problem</button>
+          <button class="chip" type="button" data-category="QUESTION" aria-pressed="false">Question</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="feedback-message">Message</label>
+        <textarea id="feedback-message" rows="7" maxlength="4000" placeholder="What would make the portal better for you?"></textarea>
+        <div class="help">Between 10 and 4,000 characters. Sent as {{.User.Email}}.</div>
+      </div>
+      <div class="actions"><button class="btn btn--primary" type="submit">{{icon "send"}} Send</button></div>
+    </form>
+    <div class="card">
+      <div class="card__head"><h3 class="card__title">Your previous feedback</h3></div>
+      <ul class="list-plain" id="feedback-list">
+        {{- range .Data.Items}}
+        <li class="fact">
+          <div class="row spread"><span class="badge badge--plain">{{.Category}}</span><span class="text-faint" style="font-size: 12px">{{datetime .CreatedAt}}</span></div>
+          <p style="margin: 8px 0 4px">{{.Message}}</p>
+          {{- if .TrackerKey}}<a href="{{str .TrackerURL}}" target="_blank" rel="noopener">{{str .TrackerKey}}</a>{{else if .TrackerError}}<span class="text-warn" style="font-size: 13px">Saved, will be handled manually</span>{{end}}
+        </li>
+        {{- else}}
+        <li class="empty">Nothing sent yet.</li>
+        {{- end}}
+      </ul>
+    </div>
+  </div>
+</div>
+{{end}}
+{{define "scripts"}}<script src="/static/js/feedback.js?v={{.Version}}"></script>{{end}}

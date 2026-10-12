@@ -1,0 +1,68 @@
+# -----------------------------------------------------------------------------
+# Business policy — editable without code change (redeploy required).
+# -----------------------------------------------------------------------------
+
+# Durations offered in the form ("c) Duration" step).
+durations:
+  - { code: 7d, label: "7 days" }
+  - { code: 1M, label: "1 month" }
+  - { code: 3M, label: "3 months" }
+  - { code: 6M, label: "6 months" }
+  - { code: 1Y, label: "1 year" }
+default_duration: 3M
+
+# A license without any usage for this number of days is removed.
+unused_days: 7
+
+# Buffered requests are retried every 7 minutes; after this number of
+# attempts the entry is abandoned and flagged to administrators.
+buffer_max_attempts: 30
+
+# Automatic approval rules applied to the enterprise directory answer.
+eligibility:
+  account_statuses: ["OK"]
+  gps_code_pattern: "^[0-9a-fA-F]{8}$"
+  allowed_gps_codes: []        # empty = any GPS code matching the pattern
+  allowed_business_units: []   # empty = any business unit
+
+# "d) Usage details" step. Mirror the fields of the current request form here.
+# Each answered question unlocks the next one.
+questions:
+  - id: use_case
+    label: "Main use case"
+    type: select
+    required: true
+    options:
+      - Application development
+      - Infrastructure as code
+      - Data / Machine learning
+      - Test automation
+      - Other
+  - id: ide
+    label: "Primary IDE"
+    type: select
+    required: true
+    options:
+      - Visual Studio Code
+      - JetBrains IDE
+      - Other
+  - id: project
+    label: "Project or product you will use it on"
+    type: text
+    required: true
+    max_length: 120
+  - id: justification
+    label: "Business justification"
+    help: "A couple of sentences: what you expect from Gemini Code Assist."
+    type: textarea
+    required: true
+    min_length: 20
+    max_length: 1000
+
+# Links displayed in the UI and in e-mails.
+links:
+  training: "https://learning.example.com/gemini-code-assist"
+  ai_usage_training: "https://learning.example.com/responsible-ai"
+  vscode_guide: "https://developers.google.com/gemini-code-assist/docs/set-up-gemini"
+  usage_policy: "https://intranet.example.com/policies/generative-ai"
+  support: "https://support.example.com/gca"
