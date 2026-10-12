@@ -42,17 +42,23 @@
   </div>
 
   <div class="kpis" style="margin-top: 20px">
-    <div class="kpi"><div class="kpi__label">Assigned / total</div><div class="kpi__value">{{$s.Counter.Assigned}}<span class="text-faint" style="font-size: 18px"> / {{$s.Counter.Total}}</span></div><div class="kpi__sub">Google counters</div></div>
-    <div class="kpi {{if $s.QueueDepth}}kpi--warn{{end}}"><div class="kpi__label">Waiting list</div><div class="kpi__value">{{$s.QueueDepth}}</div></div>
+    <div class="kpi"><div class="kpi__label">Assigned / total</div><div class="kpi__value">{{$s.Counter.Assigned}}<span class="text-faint" style="font-size: 18px"> / {{$s.Counter.Total}}</span></div>
+      {{template "kpibar" dict "Tone" "violet" "Pct" (pct $s.Counter.Assigned $s.Counter.Total) "Sub" "of the pool"}}</div>
+    <div class="kpi {{if $s.QueueDepth}}kpi--warn{{end}}"><div class="kpi__label">Waiting list</div><div class="kpi__value">{{$s.QueueDepth}}</div>
+      {{template "kpibar" dict "Tone" "blue" "Pct" (pct $s.QueueDepth $s.Counter.Total) "Sub" "of the pool size"}}</div>
     <div class="kpi {{if $s.BufferDepth}}kpi--warn{{end}}"><div class="kpi__label">Buffer</div><div class="kpi__value">{{$s.BufferDepth}}</div></div>
     <div class="kpi {{if $s.OpenDevs}}kpi--ko{{else}}kpi--ok{{end}}"><div class="kpi__label">Open deviations</div><div class="kpi__value">{{$s.OpenDevs}}</div><div class="kpi__sub">portal vs Google</div></div>
     <div class="kpi {{if $s.PendingAdmin}}kpi--warn{{end}}"><div class="kpi__label">Escalations</div><div class="kpi__value">{{$s.PendingAdmin}}</div></div>
   </div>
   <div class="kpis">
-    <div class="kpi"><div class="kpi__label">External licenses</div><div class="kpi__value">{{$s.Mix.External}}<span class="text-faint" style="font-size: 18px"> / {{$s.Mix.Active}}</span></div><div class="kpi__sub">{{printf "%.1f" $s.ExternalPct}} % of active licenses</div></div>
-    <div class="kpi {{if $s.Mix.Changed}}kpi--warn{{end}}"><div class="kpi__label">Directory data changed</div><div class="kpi__value">{{$s.Mix.Changed}}</div><div class="kpi__sub">site, BU or GPS code since assignment</div></div>
-    <div class="kpi {{if $s.Mix.Ineligible}}kpi--ko{{end}}"><div class="kpi__label">No longer eligible</div><div class="kpi__value">{{$s.Mix.Ineligible}}</div><div class="kpi__sub">monthly directory re-check</div></div>
-    <div class="kpi {{if $s.Mix.CheckErrors}}kpi--warn{{end}}"><div class="kpi__label">Re-check failed</div><div class="kpi__value">{{$s.Mix.CheckErrors}}</div><div class="kpi__sub">{{$s.Mix.NeverChecked}} never checked yet</div></div>
+    <div class="kpi"><div class="kpi__label">External licenses</div><div class="kpi__value">{{$s.Mix.External}}<span class="text-faint" style="font-size: 18px"> / {{$s.Mix.Active}}</span></div>
+      {{template "kpibar" dict "Tone" "amber" "Pct" (pct $s.Mix.External $s.Mix.Active) "Label" (printf "%.1f" $s.ExternalPct) "Sub" "of active licenses"}}</div>
+    <div class="kpi {{if $s.Mix.Changed}}kpi--warn{{end}}"><div class="kpi__label">Directory data changed</div><div class="kpi__value">{{$s.Mix.Changed}}</div>
+      {{template "kpibar" dict "Tone" "blue" "Pct" (pct $s.Mix.Changed $s.Mix.Active) "Sub" "site, BU or GPS code changed"}}</div>
+    <div class="kpi {{if $s.Mix.Ineligible}}kpi--ko{{end}}"><div class="kpi__label">No longer eligible</div><div class="kpi__value">{{$s.Mix.Ineligible}}</div>
+      {{template "kpibar" dict "Tone" "rose" "Pct" (pct $s.Mix.Ineligible $s.Mix.Active) "Sub" "monthly directory re-check"}}</div>
+    <div class="kpi {{if $s.Mix.CheckErrors}}kpi--warn{{end}}"><div class="kpi__label">Re-check failed</div><div class="kpi__value">{{$s.Mix.CheckErrors}}</div>
+      {{template "kpibar" dict "Tone" "amber" "Pct" (pct $s.Mix.CheckErrors $s.Mix.Active) "Sub" (printf "%d never checked yet" $s.Mix.NeverChecked)}}</div>
   </div>
 
   {{/* --- Super admin: jobs and simulation --------------------------------- */}}
@@ -180,4 +186,10 @@
 {{define "scripts"}}
 <script src="/static/vendor/chart-4.5.0.umd.min.js"></script>
 <script src="/static/js/obs.js?v={{.Version}}"></script>
+{{end}}
+
+{{/* Thin gradient progress bar of a ratio KPI tile, with its percentage. */}}
+{{define "kpibar"}}
+<div class="kpi__bar kpi__bar--{{.Tone}}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{.Pct}}"><span style="width: {{.Pct}}%"></span></div>
+<div class="kpi__foot"><span class="kpi__sub">{{.Sub}}</span><span class="kpi__pct">{{or .Label .Pct}} %</span></div>
 {{end}}

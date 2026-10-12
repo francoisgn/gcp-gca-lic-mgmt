@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| Version | **1.2.1** |
+| Version | **1.3.0** |
 | Theme | Dark only (v1) |
 | UI language | English only |
-| Inspirations | Google design language (calm, airy, negative space, accent colours used sparingly) · [Catppuccin](https://catppuccin.com) Mocha palette · minimalist isometric illustration · Gemini gradient for the brand only (Gemini CLI wordmark) · faded teal → green → lime accents · 2026 trends: soft gradients, glassy top bar, pill shapes, generous radii |
+| Inspirations | Google design language (calm, airy, negative space, accent colours used sparingly) · [Catppuccin](https://catppuccin.com) Mocha palette · minimalist isometric illustration · Gemini gradient for the brand only (Gemini CLI wordmark) · faded teal → green → lime accents · dark analytics dashboards for the observability charts (multi-hue gradients, thin lines, faded areas) · 2026 trends: soft gradients, glassy top bar, pill shapes, generous radii |
 
 ---
 
@@ -18,7 +18,7 @@
 1. **One thing per screen.** The landing page answers one question — *"what is the state of my license?"* — before anything else.
 2. **Progressive disclosure.** Forms reveal one question at a time; each answer unlocks the next one. Nothing is shown before it is useful.
 3. **Status is always explicit.** Every state uses the RAG vocabulary (§3.3) in the same way across pages: left progress panel, badges, alerts, KPI tiles.
-4. **Accent with restraint.** Two gradients, two roles: the **Gemini gradient** is the *brand* (top bar logo and `> GCA` wordmark only); the **accent gradient** (faded teal → green → lime) carries every other accent (primary action, active step, selection, key numbers, charts). Faded, never neon: no saturated pink or violet on the dark background. Never as a background of large surfaces.
+4. **Accent with restraint.** Two gradients, two roles: the **Gemini gradient** is the *brand* (top bar logo and `> GCA` wordmark only); the **accent gradient** (faded teal → green → lime) carries every other accent of the UI (primary action, active step, selection, key numbers); charts use the data-viz palette of §6. Faded, never neon: no saturated pink or violet on the dark background. Never as a background of large surfaces.
 5. **Negative space over borders.** Separate with spacing first, then with a 1 px low-contrast border, never with heavy lines.
 6. **Calm motion.** Animations explain a change (reveal, loading); they never decorate. `prefers-reduced-motion` disables them.
 
@@ -158,26 +158,42 @@ Scale: `12 · 13 · 15 (base) · 18 · 24 · 32 · 44` px (`--fs-xs` … `--fs-3
 
 ---
 
-## 6. Data visualisation
+## 6. Data visualisation — "dashboard gradients"
 
-- Library: Chart.js 4 (vendored, no CDN at runtime).
-- Axis text `subtext0`, grid lines text @ 6 %, no vertical grid lines, legend with 10 px point markers.
-- Fixed series colours (never reassign them):
+The observability page has its own, richer palette, inspired by modern dark analytics dashboards: **saturated multi-hue gradients, thin smooth lines, filled areas faded to transparent**. Strongly accented but calm, because colour is only ever carried by thin strokes, small bars and faded areas — never by large solid surfaces. The rest of the UI keeps the green accent gradient (§3.1).
 
-| Series | Colour |
+- Library: Chart.js 4 (vendored, no CDN at runtime). Theme and helpers in `static/js/obs.js` (`G`, `line()`, `bar()`, `across()`, `down()`, `fade()`).
+- **Lines**: 2 px (1.5 px for secondary lines), monotone cubic interpolation (smooth, never overshoots the data), no points (4 px on hover), stroke = gradient left → right across the chart.
+- **Areas**: the line's mid colour at 34 % at the top, fading to 0 at the axis.
+- **Bars**: 4 px radius (6 px in the waterfall), max 16 px wide (34 px waterfall); gradient across the period at 80 % (100 % on hover); categorical bars use a top → bottom gradient.
+- Axes without border lines, no vertical grid, horizontal grid text @ 5 %; legend and tooltip with 7 px round dots in the series' mid colour; tooltip 10 px radius.
+- **KPI ratio bars** (`.kpi__bar--{violet,blue,amber,rose,green}`): 6 px pill track (`surface-2`), gradient fill with a soft glow, percentage in mono on the right. Only on tiles that have a real denominator (pool, active licenses).
+
+| Gradient | Stops | CSS token |
+|---|---|---|
+| violet → pink | `#7b6cf6 → #d77fc0` | `--viz-violet` |
+| indigo → cyan | `#5f73f2 → #46b3d6` | `--viz-blue` |
+| amber → orange | `#f2c66d → #ec8f5e` | `--viz-amber` |
+| yellow → amber | `#f5dc8f → #f2c66d` | — |
+| teal → lime (UI accent) | `#4fa596 → #bfd38a` | `--gradient-accent` |
+| pink → soft red | `#d77fc0 → #e78284` | `--viz-rose` |
+| lilac | `#a6a1f0 → #b4befe` | — |
+| grey | `#7f849c → #585b70` | — |
+
+Fixed series (never reassign them):
+
+| Series | Gradient |
 |---|---|
-| Auto assignment | green |
-| Admin assignment | teal |
-| Other assignment (back-port) | lavender |
-| Removed — unused | peach |
-| Removed — expired | yellow |
-| Removed — admin | red |
-| Removed — other | brick `#c98a7d` |
-| Free seats | accent lime (dashed line, 22 % bar in the waterfall) · Start / End totals: overlay2 |
-| Queue | blue · Buffer: peach · Deviations: red |
-| Errors: TIMEOUT peach · 5XX red · 4XX brick · NETWORK yellow · RATE_LIMITED mauve · ERROR sand `#d9c4b8` · NOT_FOUND overlay |
-| Latency p50 accent teal (solid) · p95 accent lime (dashed) |
-| Page views accent lime (area) · Google license checks accent teal (dashed) |
+| Auto / admin / other assignment | teal → lime · indigo → cyan · lilac |
+| Removed — unused / expired / admin / other | amber → orange · yellow → amber · pink → soft red · grey |
+| Free seats | violet → pink line (1.5 px) · faded lime bar with a lime hairline in the waterfall |
+| Waterfall start / end totals | violet → pink |
+| Queue depth · buffer depth · deviations | violet → pink area · amber → orange area · pink → soft red bars |
+| Directory errors | TIMEOUT amber · 5XX rose · 4XX violet · NETWORK yellow · RATE_LIMITED blue · ERROR lilac · NOT_FOUND grey |
+| Latency | p50 indigo → cyan area · p95 violet → pink line |
+| Timeouts | user waiting rose · jobs amber · admin lilac |
+| App access | page views indigo → cyan area · Google checks violet → pink line |
+| KPI bars | pool violet · waiting list and directory changes blue · externals and re-check errors amber · no longer eligible rose |
 
 - Removals are drawn **below zero** in the daily flow chart so that + and − read at a glance; the period waterfall uses floating bars (start → + → − → end → free seats).
 
@@ -211,6 +227,7 @@ Scale: `12 · 13 · 15 (base) · 18 · 24 · 32 · 44` px (`--fs-xs` … `--fs-3
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.0 | 2026-10-12 | Observability gets its own **"dashboard gradients"** data-viz palette (violet → pink, indigo → cyan, amber → orange, pink → soft red): thin monotone lines with gradient strokes, areas faded to transparent, rounded gradient bars, round legend dots; gradient ratio bars with percentage on the KPI tiles (`.kpi__bar`, `--viz-*` tokens). |
 | 1.2.1 | 2026-10-12 | Form sections numbered like the progress panel (1 … 9) instead of letters (A, B, C, D, W, W1, ✓); `.qa__letter` gets `min-width` + padding for *7–9*. |
 | 1.2.0 | 2026-10-12 | **Accents move from the Gemini gradient to a faded teal → green → lime gradient** (`--gradient-accent`): primary button, active step, chips, tabs, avatar, pool bar, position numbers, loader, form letters, links, focus ring, charts, e-mail header. The Gemini gradient stays for the brand only (top bar logo, `> GCA` wordmark). Softer critical red `#e78284`; done / failed form letters become tinted outlines; glows reduced. New hero illustration: isometric 1980s desk with a faded black & white poster (replaces the laptop and the Catppuccin paw print). |
 | 1.1.0 | 2026-10-12 | `.dialog-pre` (e-mail preview), `.split--aside` (GPS codes tab), directory check badges and *external* badge in the inventory, second row of KPI tiles (external ratio, directory drift). No token change. |

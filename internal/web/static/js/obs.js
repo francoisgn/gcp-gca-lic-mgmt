@@ -9,27 +9,86 @@
   const page = GCA.pageData();
 
   // ---------------------------------------------------------------------------
-  // Chart theme
+  // Chart theme — "dashboard gradients" (DESIGN.md § Data visualisation):
+  // multi-hue gradients, thin smooth lines, filled areas faded to transparent,
+  // rounded bars. Saturated hues, but never as large solid surfaces.
   // ---------------------------------------------------------------------------
-  const C = {
-    text: '#a6adc8', grid: 'rgba(205, 214, 244, 0.06)',
-    green: '#a6e3a1', teal: '#94e2d5', lavender: '#b4befe', blue: '#89b4fa', sapphire: '#74c7ec',
-    peach: '#fab387', yellow: '#f9e2af', red: '#e78284', maroon: '#c98a7d', mauve: '#cba6f7',
-    overlay: '#7f849c', flamingo: '#d9c4b8',
-    // UI accent gradient (faded teal → green → lime), same stops as app.css.
-    acc: ['#4fa596', '#7dbb86', '#bfd38a'], neutral: '#9399b2',
+  const G = {
+    violet: ['#7b6cf6', '#d77fc0'], // violet → pink (signature line)
+    blue: ['#5f73f2', '#46b3d6'],   // indigo → cyan
+    amber: ['#f2c66d', '#ec8f5e'],  // amber → orange
+    yellow: ['#f5dc8f', '#f2c66d'],
+    green: ['#4fa596', '#bfd38a'],  // UI accent: teal → lime
+    rose: ['#d77fc0', '#e78284'],   // pink → soft red
+    lilac: ['#a6a1f0', '#b4befe'],
+    grey: ['#7f849c', '#585b70'],
   };
-  Chart.defaults.color = C.text;
+  Chart.defaults.color = '#a6adc8';
   Chart.defaults.font.family = 'Roboto, system-ui, sans-serif';
   Chart.defaults.font.size = 12;
-  Chart.defaults.borderColor = C.grid;
-  Chart.defaults.plugins.legend.labels.boxWidth = 10;
-  Chart.defaults.plugins.legend.labels.boxHeight = 10;
-  Chart.defaults.plugins.legend.labels.usePointStyle = true;
-  Chart.defaults.plugins.tooltip.backgroundColor = '#1e1e2e';
-  Chart.defaults.plugins.tooltip.borderColor = 'rgba(205,214,244,.16)';
-  Chart.defaults.plugins.tooltip.borderWidth = 1;
+  Chart.defaults.borderColor = 'rgba(205, 214, 244, 0.05)';
   Chart.defaults.maintainAspectRatio = false;
+  // Monotone curves: smooth like the reference dashboard, without overshooting the data.
+  Object.assign(Chart.defaults.elements.line, { borderWidth: 2, tension: 0.4, cubicInterpolationMode: 'monotone', borderCapStyle: 'round' });
+  Object.assign(Chart.defaults.elements.point, { radius: 0, hoverRadius: 4, hitRadius: 10, hoverBorderWidth: 2 });
+  Object.assign(Chart.defaults.elements.bar, { borderRadius: 4, borderSkipped: false });
+  Chart.defaults.datasets.bar.maxBarThickness = 16;
+  Object.assign(Chart.defaults.plugins.legend.labels, { usePointStyle: true, pointStyle: 'circle', boxWidth: 7, boxHeight: 7, padding: 14 });
+  Object.assign(Chart.defaults.plugins.tooltip, {
+    backgroundColor: 'rgba(30, 30, 46, 0.95)', borderColor: 'rgba(205,214,244,.12)', borderWidth: 1,
+    padding: 10, cornerRadius: 10, usePointStyle: true, boxPadding: 4,
+  });
+  // Legend dots use the solid colour of the dataset (gradients would be clipped).
+  const baseLabels = Chart.defaults.plugins.legend.labels.generateLabels;
+  Chart.defaults.plugins.legend.labels.generateLabels = (chart) => baseLabels(chart).map((item) => {
+    const ds = chart.data.datasets[item.datasetIndex];
+    if (ds && ds.legendColor) Object.assign(item, { fillStyle: ds.legendColor, strokeStyle: ds.legendColor, lineWidth: 0 });
+    return item;
+  });
+
+  /** rgba() string from a #rrggbb colour. */
+  const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
+  /** Middle colour of a gradient (legend dots, points). */
+  const mid = ([a, b]) => {
+    const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
+    const m = (s) => Math.round((((x >> s) & 255) + ((y >> s) & 255)) / 2);
+    return `#${[16, 8, 0].map((s) => m(s).toString(16).padStart(2, '0')).join('')}`;
+  };
+  /** Scriptable gradient across the chart area, left → right (lines, bars over time). */
+  const across = ([a, b], alpha = 1) => ({ chart }) => {
+    const { chartArea: r, ctx } = chart;
+    if (!r) return rgba(a, alpha);
+    const g = ctx.createLinearGradient(r.left, 0, r.right, 0);
+    g.addColorStop(0, rgba(a, alpha)); g.addColorStop(1, rgba(b, alpha));
+    return g;
+  };
+  /** Scriptable gradient top → bottom (categorical bars). */
+  const down = ([a, b], alpha = 0.9) => ({ chart }) => {
+    const { chartArea: r, ctx } = chart;
+    if (!r) return rgba(a, alpha);
+    const g = ctx.createLinearGradient(0, r.top, 0, r.bottom);
+    g.addColorStop(0, rgba(a, alpha)); g.addColorStop(1, rgba(b, alpha * 0.75));
+    return g;
+  };
+  /** Scriptable fill for areas: the colour fades to transparent towards the axis. */
+  const fade = (hex, alpha = 0.34) => ({ chart }) => {
+    const { chartArea: r, ctx } = chart;
+    if (!r) return rgba(hex, alpha / 2);
+    const g = ctx.createLinearGradient(0, r.top, 0, r.bottom);
+    g.addColorStop(0, rgba(hex, alpha)); g.addColorStop(0.7, rgba(hex, alpha / 5)); g.addColorStop(1, rgba(hex, 0));
+    return g;
+  };
+  /** Line dataset: thin gradient stroke, optionally a faded filled area. */
+  const line = (label, data, grad, { fill = false, dash, width } = {}) => ({
+    type: 'line', label, data, fill, borderDash: dash, borderWidth: width, spanGaps: true,
+    borderColor: across(grad), backgroundColor: fill ? fade(mid(grad)) : mid(grad),
+    pointBackgroundColor: mid(grad), pointBorderColor: '#11111b', legendColor: mid(grad),
+  });
+  /** Bar dataset: gradient across the period, slightly transparent. */
+  const bar = (label, data, grad, stack) => ({
+    type: 'bar', label, data, stack,
+    backgroundColor: across(grad, 0.8), hoverBackgroundColor: across(grad, 1), legendColor: mid(grad),
+  });
 
   const charts = {};
   /** Creates or replaces a chart on a canvas. */
@@ -38,10 +97,9 @@
     charts[id] = new Chart(document.getElementById(id), config);
   }
   const dayLabel = (iso) => new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
-  const stackedScales = (extra = {}) => ({
-    x: { stacked: true, grid: { display: false } },
-    y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, ...extra },
-  });
+  const xAxis = { grid: { display: false }, border: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 12 } };
+  const yAxis = (extra = {}) => ({ beginAtZero: true, border: { display: false }, ticks: { precision: 0, padding: 8 }, ...extra });
+  const stackedScales = () => ({ x: { ...xAxis, stacked: true }, y: yAxis({ stacked: true }) });
 
   // ---------------------------------------------------------------------------
   // License flows (daily diverging bars + period waterfall)
@@ -49,25 +107,25 @@
   async function loadFlows(days) {
     const { points } = await api('GET', `/api/obs/flows?days=${days}`);
     const labels = points.map((p) => dayLabel(p.day));
+    const pos = (k) => points.map((p) => p[k]);
     const neg = (k) => points.map((p) => -p[k]);
     draw('chart-flows', {
       data: {
         labels,
         datasets: [
-          { type: 'bar', label: 'Auto assignment', data: points.map((p) => p.assignAuto), backgroundColor: C.green, stack: 'f' },
-          { type: 'bar', label: 'Admin assignment', data: points.map((p) => p.assignAdmin), backgroundColor: C.teal, stack: 'f' },
-          { type: 'bar', label: 'Other assignment', data: points.map((p) => p.assignOther), backgroundColor: C.lavender, stack: 'f' },
-          { type: 'bar', label: 'Removed: unused', data: neg('unassignUnused'), backgroundColor: C.peach, stack: 'f' },
-          { type: 'bar', label: 'Removed: expired', data: neg('unassignExpired'), backgroundColor: C.yellow, stack: 'f' },
-          { type: 'bar', label: 'Removed: admin', data: neg('unassignAdmin'), backgroundColor: C.red, stack: 'f' },
-          { type: 'bar', label: 'Removed: other', data: neg('unassignOther'), backgroundColor: C.maroon, stack: 'f' },
-          { type: 'line', label: 'Free seats (end of day)', data: points.map((p) => Math.max(0, (p.seatsTotal ?? 0) - p.assignedEnd)),
-            borderColor: C.acc[2], backgroundColor: C.acc[2], borderDash: [5, 4], pointRadius: 0, tension: 0.3, stack: 'line' },
+          bar('Auto assignment', pos('assignAuto'), G.green, 'f'),
+          bar('Admin assignment', pos('assignAdmin'), G.blue, 'f'),
+          bar('Other assignment', pos('assignOther'), G.lilac, 'f'),
+          bar('Removed: unused', neg('unassignUnused'), G.amber, 'f'),
+          bar('Removed: expired', neg('unassignExpired'), G.yellow, 'f'),
+          bar('Removed: admin', neg('unassignAdmin'), G.rose, 'f'),
+          bar('Removed: other', neg('unassignOther'), G.grey, 'f'),
+          { ...line('Free seats (end of day)', points.map((p) => Math.max(0, (p.seatsTotal ?? 0) - p.assignedEnd)), G.violet, { width: 1.5 }), stack: 'line' },
         ],
       },
       options: {
         interaction: { mode: 'index', intersect: false },
-        scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, ticks: { precision: 0 } } },
+        scales: { x: { ...xAxis, stacked: true }, y: yAxis({ stacked: true, beginAtZero: false }) },
         plugins: { tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${Math.abs(c.parsed.y)}` } } },
       },
     });
@@ -78,27 +136,32 @@
     const net0 = first.assignAuto + first.assignAdmin + first.assignOther - first.unassignUnused - first.unassignExpired - first.unassignAdmin - first.unassignOther;
     const start = first.assignedEnd - net0;
     const steps = [
-      ['+ Auto', sum('assignAuto'), C.green], ['+ Admin', sum('assignAdmin'), C.teal], ['+ Other', sum('assignOther'), C.lavender],
-      ['− Unused', -sum('unassignUnused'), C.peach], ['− Expired', -sum('unassignExpired'), C.yellow],
-      ['− Admin', -sum('unassignAdmin'), C.red], ['− Other', -sum('unassignOther'), C.maroon],
+      ['+ Auto', sum('assignAuto'), G.green], ['+ Admin', sum('assignAdmin'), G.blue], ['+ Other', sum('assignOther'), G.lilac],
+      ['− Unused', -sum('unassignUnused'), G.amber], ['− Expired', -sum('unassignExpired'), G.yellow],
+      ['− Admin', -sum('unassignAdmin'), G.rose], ['− Other', -sum('unassignOther'), G.grey],
     ];
-    const wfLabels = ['Start'], wfData = [[0, start]], wfColors = [C.neutral];
+    const wfLabels = ['Start'], wfData = [[0, start]], wfGrads = [G.violet];
     let level = start;
-    for (const [label, delta, color] of steps) {
+    for (const [label, delta, grad] of steps) {
       wfLabels.push(label);
       wfData.push([level, level + delta]);
-      wfColors.push(color);
+      wfGrads.push(grad);
       level += delta;
     }
-    wfLabels.push('End'); wfData.push([0, last.assignedEnd]); wfColors.push(C.neutral);
+    wfLabels.push('End'); wfData.push([0, last.assignedEnd]); wfGrads.push(G.violet);
     const seats = last.seatsTotal ?? last.assignedEnd;
-    wfLabels.push('Free seats'); wfData.push([last.assignedEnd, Math.max(seats, last.assignedEnd)]); wfColors.push('rgba(191,211,138,0.22)');
+    wfLabels.push('Free seats'); wfData.push([last.assignedEnd, Math.max(seats, last.assignedEnd)]); wfGrads.push(null);
     draw('chart-waterfall', {
       type: 'bar',
-      data: { labels: wfLabels, datasets: [{ label: 'Seats', data: wfData, backgroundColor: wfColors, borderRadius: 6, borderSkipped: false }] },
+      data: { labels: wfLabels, datasets: [{
+        label: 'Seats', data: wfData, borderRadius: 6, maxBarThickness: 34,
+        backgroundColor: (c) => (wfGrads[c.dataIndex] ? down(wfGrads[c.dataIndex])(c) : rgba(G.green[1], 0.16)),
+        borderColor: (c) => (wfGrads[c.dataIndex] ? 'transparent' : rgba(G.green[1], 0.45)),
+        borderWidth: (c) => (wfGrads[c.dataIndex] ? 0 : 1),
+      }] },
       options: {
         plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => { const [a, b] = c.raw; return `${c.label}: ${c.dataIndex === 0 || c.label === 'End' ? b : (b - a > 0 ? '+' : '') + (b - a)}`; } } } },
-        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } },
+        scales: { x: { ...xAxis, ticks: { autoSkip: false, maxRotation: 0, font: { size: 11 } } }, y: yAxis() },
       },
     });
   }
@@ -109,17 +172,17 @@
   async function loadDepths(days) {
     const pts = await api('GET', `/api/obs/depths?days=${days}`);
     const labels = pts.map((p) => dayLabel(p.day));
-    const area = (id, label, key, color) => draw(id, {
+    const area = (id, label, key, grad) => draw(id, {
       type: 'line',
-      data: { labels, datasets: [{ label, data: pts.map((p) => p[key]), borderColor: color, backgroundColor: `${color}33`, fill: true, tension: 0.35, pointRadius: 0, pointHoverRadius: 4 }] },
-      options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } } },
+      data: { labels, datasets: [line(label, pts.map((p) => p[key]), grad, { fill: true })] },
+      options: { interaction: { mode: 'index', intersect: false }, plugins: { legend: { display: false } }, scales: { x: xAxis, y: yAxis() } },
     });
-    area('chart-queue', 'Waiting list', 'queue', C.blue);
-    area('chart-buffer', 'Buffer', 'buffer', C.peach);
+    area('chart-queue', 'Waiting list', 'queue', G.violet);
+    area('chart-buffer', 'Buffer', 'buffer', G.amber);
     draw('chart-deviations', {
       type: 'bar',
-      data: { labels, datasets: [{ label: 'Open deviations', data: pts.map((p) => p.deviations), backgroundColor: C.red, borderRadius: 4 }] },
-      options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } } },
+      data: { labels, datasets: [{ ...bar('Open deviations', pts.map((p) => p.deviations), G.rose), backgroundColor: down(G.rose) }] },
+      options: { plugins: { legend: { display: false } }, scales: { x: xAxis, y: yAxis() } },
     });
   }
 
@@ -132,24 +195,24 @@
     const byDay = (rows, pred, val) => k.days.map((d) => rows.filter((r) => r.day.slice(0, 10) === d && pred(r)).reduce((a, r) => a + val(r), 0));
 
     // Directory errors, stacked by type.
-    const types = [['TIMEOUT', C.peach], ['HTTP_5XX', C.red], ['HTTP_4XX', C.maroon], ['NETWORK', C.yellow], ['RATE_LIMITED', C.mauve], ['ERROR', C.flamingo], ['NOT_FOUND', C.overlay]];
+    const types = [['TIMEOUT', G.amber], ['HTTP_5XX', G.rose], ['HTTP_4XX', G.violet], ['NETWORK', G.yellow], ['RATE_LIMITED', G.blue], ['ERROR', G.lilac], ['NOT_FOUND', G.grey]];
     draw('chart-ed-errors', {
       type: 'bar',
-      data: { labels, datasets: types.map(([t, color]) => ({ label: t === 'NOT_FOUND' ? 'NOT_FOUND (unknown account)' : t, data: byDay(k.directory || [], (r) => r.outcome === t, (r) => r.n), backgroundColor: color, stack: 'e' })) },
+      data: { labels, datasets: types.map(([t, grad]) => bar(t === 'NOT_FOUND' ? 'NOT_FOUND (unknown account)' : t, byDay(k.directory || [], (r) => r.outcome === t, (r) => r.n), grad, 'e')) },
       options: { scales: stackedScales() },
     });
 
-    // Latency charts.
+    // Latency charts: p50 as a faded area, p95 as a thin line above it.
     const latency = (id, target, op) => {
       const rows = (k.latencies || []).filter((r) => r.target === target && r.operation === op);
       const pick = (key) => k.days.map((d) => { const r = rows.find((x) => x.day.slice(0, 10) === d); return r ? Math.round(r[key]) : null; });
       draw(id, {
         type: 'line',
         data: { labels, datasets: [
-          { label: 'p50', data: pick('p50'), borderColor: C.acc[0], backgroundColor: C.acc[0], tension: 0.3, spanGaps: true, pointRadius: 2 },
-          { label: 'p95', data: pick('p95'), borderColor: C.acc[2], backgroundColor: C.acc[2], tension: 0.3, spanGaps: true, pointRadius: 2, borderDash: [4, 3] },
+          line('p50', pick('p50'), G.blue, { fill: true }),
+          line('p95', pick('p95'), G.violet, { width: 1.5 }),
         ] },
-        options: { scales: { x: { grid: { display: false } }, y: { beginAtZero: true, title: { display: true, text: 'ms' } } } },
+        options: { interaction: { mode: 'index', intersect: false }, scales: { x: xAxis, y: yAxis({ title: { display: true, text: 'ms' } }) } },
       });
     };
     latency('chart-ed-latency', 'DIRECTORY', 'lookup');
@@ -160,9 +223,9 @@
     draw('chart-timeouts', {
       type: 'bar',
       data: { labels, datasets: [
-        { label: 'Initial process (user waiting)', data: byDay(k.timeouts || [], (r) => r.context === 'UX', (r) => r.n), backgroundColor: C.red, stack: 't' },
-        { label: 'Retry mechanism (jobs)', data: byDay(k.timeouts || [], (r) => r.context === 'JOB', (r) => r.n), backgroundColor: C.peach, stack: 't' },
-        { label: 'Admin actions', data: byDay(k.timeouts || [], (r) => r.context === 'ADMIN', (r) => r.n), backgroundColor: C.mauve, stack: 't' },
+        bar('Initial process (user waiting)', byDay(k.timeouts || [], (r) => r.context === 'UX', (r) => r.n), G.rose, 't'),
+        bar('Retry mechanism (jobs)', byDay(k.timeouts || [], (r) => r.context === 'JOB', (r) => r.n), G.amber, 't'),
+        bar('Admin actions', byDay(k.timeouts || [], (r) => r.context === 'ADMIN', (r) => r.n), G.lilac, 't'),
       ] },
       options: { scales: stackedScales() },
     });
@@ -171,10 +234,10 @@
     draw('chart-access', {
       type: 'line',
       data: { labels: (k.accesses || []).map((a) => dayLabel(a.day)), datasets: [
-        { label: 'Page views', data: (k.accesses || []).map((a) => a.pageViews), borderColor: C.acc[2], backgroundColor: `${C.acc[2]}1f`, fill: true, tension: 0.3, pointRadius: 0 },
-        { label: 'Google license checks', data: (k.accesses || []).map((a) => a.googleChecks), borderColor: C.acc[0], backgroundColor: C.acc[0], tension: 0.3, pointRadius: 0, borderDash: [5, 4] },
+        line('Page views', (k.accesses || []).map((a) => a.pageViews), G.blue, { fill: true }),
+        line('Google license checks', (k.accesses || []).map((a) => a.googleChecks), G.violet, { width: 1.5 }),
       ] },
-      options: { interaction: { mode: 'index', intersect: false }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true } } },
+      options: { interaction: { mode: 'index', intersect: false }, scales: { x: xAxis, y: yAxis() } },
     });
   }
 
