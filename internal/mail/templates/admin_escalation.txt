@@ -1,0 +1,11 @@
+Hello {{.Name}},
+
+{{.Requester}}{{if .External}} (external account){{end}} escalated a Gemini Code Assist license request.
+
+  Why not automatic : {{.Reason}}
+  Division          : {{.Division}}
+  Entity            : {{.Entity}}
+  Project           : {{.Project}}
+{{if .Comment}}  Comment           : {{.Comment}}
+{{end}}
+Review it in the portal: {{.PortalURL}}/admin#approvals

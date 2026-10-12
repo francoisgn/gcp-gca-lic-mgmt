@@ -3,5 +3,5 @@
 <p>Hello {{.Name}},</p>
 <p>Your license (active since {{date .Since}}) was removed on {{date .Until}}.</p>
 <p>Reason: <strong>{{.Reason}}</strong>{{if .ReasonHint}} — {{.ReasonHint}}{{end}}</p>
-<p>You can request a new license at any time from the portal.</p>
+{{if .Requeued}}<p>You have been placed <strong>first in the waiting list</strong>: a license will be assigned again automatically as soon as one is free.</p>{{else}}<p>You can request a new license at any time from the portal.</p>{{end}}
 {{template "footer" .}}

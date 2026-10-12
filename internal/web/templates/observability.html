@@ -48,6 +48,12 @@
     <div class="kpi {{if $s.OpenDevs}}kpi--ko{{else}}kpi--ok{{end}}"><div class="kpi__label">Open deviations</div><div class="kpi__value">{{$s.OpenDevs}}</div><div class="kpi__sub">portal vs Google</div></div>
     <div class="kpi {{if $s.PendingAdmin}}kpi--warn{{end}}"><div class="kpi__label">Escalations</div><div class="kpi__value">{{$s.PendingAdmin}}</div></div>
   </div>
+  <div class="kpis">
+    <div class="kpi"><div class="kpi__label">External licenses</div><div class="kpi__value">{{$s.Mix.External}}<span class="text-faint" style="font-size: 18px"> / {{$s.Mix.Active}}</span></div><div class="kpi__sub">{{printf "%.1f" $s.ExternalPct}} % of active licenses</div></div>
+    <div class="kpi {{if $s.Mix.Changed}}kpi--warn{{end}}"><div class="kpi__label">Directory data changed</div><div class="kpi__value">{{$s.Mix.Changed}}</div><div class="kpi__sub">site, BU or GPS code since assignment</div></div>
+    <div class="kpi {{if $s.Mix.Ineligible}}kpi--ko{{end}}"><div class="kpi__label">No longer eligible</div><div class="kpi__value">{{$s.Mix.Ineligible}}</div><div class="kpi__sub">monthly directory re-check</div></div>
+    <div class="kpi {{if $s.Mix.CheckErrors}}kpi--warn{{end}}"><div class="kpi__label">Re-check failed</div><div class="kpi__value">{{$s.Mix.CheckErrors}}</div><div class="kpi__sub">{{$s.Mix.NeverChecked}} never checked yet</div></div>
+  </div>
 
   {{/* --- Super admin: jobs and simulation --------------------------------- */}}
   {{- if .Data.Super}}
@@ -131,12 +137,14 @@
       </div>
       <div class="stack" id="inv-filters" style="margin-bottom: 16px"></div>
       <div class="table-wrap"><table>
-        <thead><tr><th><input type="checkbox" id="inv-all" aria-label="Select all"></th><th>User</th><th>Site</th><th>BU</th><th>Source</th><th>Assigned</th><th>Expires</th><th>Last usage</th><th>Google</th></tr></thead>
-        <tbody id="inv-body"><tr><td colspan="9" class="table-empty">Loading…</td></tr></tbody>
+        <thead><tr><th><input type="checkbox" id="inv-all" aria-label="Select all"></th><th>User</th><th>Site</th><th>BU</th><th>Source</th><th>Assigned</th><th>Expires</th><th>Last usage</th><th>Directory</th><th>Google</th></tr></thead>
+        <tbody id="inv-body"><tr><td colspan="10" class="table-empty">Loading…</td></tr></tbody>
       </table></div>
       <div class="selection-bar" id="inv-bar">
         <span id="inv-selected" class="text-muted">0 selected</span>
         <div class="row">
+          <button class="btn btn--sm btn--secondary" type="button" id="inv-recheck" disabled>Re-check directory</button>
+          <button class="btn btn--sm btn--secondary" type="button" id="inv-ack" disabled>Accept directory changes</button>
           <button class="btn btn--sm btn--danger" type="button" id="inv-remove-selected" disabled>Remove selected</button>
           <button class="btn btn--sm btn--danger" type="button" id="inv-remove-matching" disabled>Remove all matching</button>
         </div>

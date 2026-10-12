@@ -1,55 +1,55 @@
-# Gemini Code Assist — License Portal
+# GCA License Portal
 
-Self-service portal to request, assign, monitor and reclaim **Gemini Code Assist Standard / Enterprise** licenses in a Google Cloud organization.
+[![CI](https://github.com/francoisgn/gcp-gca-lic-mgmt/actions/workflows/ci.yml/badge.svg)](https://github.com/francoisgn/gcp-gca-lic-mgmt/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/francoisgn)
+
+**Self-service portal to govern Gemini Code Assist Standard / Enterprise licenses in a Google Cloud organization**: eligible employees get a license in seconds, the pool is reclaimed automatically, administrators keep control and Google stays the source of truth.
 
 ![Landing page](docs/wiki/images/landing-active.png)
 
-- Automatic assignment when the user is eligible (training + enterprise directory GPS code) and a seat is free
-- Admin escalation, approval / rejection with history, manual assignment, atomic transfer, criteria-based mass removal
-- Waiting list when the pool is exhausted, priority buffer when Google or the directory time out (retried every 7 min)
-- Automatic removal of licenses unused for 7 days or expired
-- Subscription renewal detection with license migration (every 3 h + manual refresh for super admins)
-- Deviation tracking against Google (source of truth), KPIs and technical observability
+## Features
 
-**Stack**: Go 1.26 · Cloud Run (web + worker) · Identity-Aware Proxy · Cloud SQL for PostgreSQL 16 · Cloud Scheduler · Secret Manager · Cloud Commerce Consumer Procurement API · Cloud Identity Groups API.
+- **Self-service** — progressive request form (training, duration, usage details), automatic approval when the enterprise directory GPS code is in the allowlist, license + IAM credentials + confirmation e-mail in under 10 seconds.
+- **Fair pool** — waiting list when the pool is exhausted, priority buffer when Google or the directory time out (retried every 7 min), removal after 7 days without usage or at expiry.
+- **Admin control** — escalations (external `*.ext@` accounts always go through an admin), approve / reject with history, manual assignment, atomic transfer, criteria-based mass removal, GPS code allowlist managed in the UI.
+- **Continuous compliance** — monthly re-check of every license against the enterprise directory (assignment anniversary), drift and "no longer eligible" flags in the inventory.
+- **Subscription lifecycle** — renewal detection every 3 h with license migration; deviations with Google tracked until resolved.
+- **Observability** — license flow waterfall, queue / buffer / deviation depth, external license ratio, directory errors and response times, e-mail journal.
 
-## Quick start (local, everything simulated)
+**Stack**: Go 1.26 · Cloud Run · Identity-Aware Proxy · Cloud SQL for PostgreSQL 16 · Cloud Scheduler · Secret Manager · Cloud Commerce Consumer Procurement API · Cloud Identity Groups API · Terraform.
+
+## Try it in 1 minute (everything simulated)
 
 ```bash
-docker compose up --build        # http://localhost:8080 — fake Google API, simulated directory, demo data
+git clone https://github.com/francoisgn/gcp-gca-lic-mgmt && cd gcp-gca-lic-mgmt
+docker compose up --build        # → http://localhost:8080
 ```
 
-Without Docker for the app itself (PostgreSQL still needed):
+Fake Google API, simulated enterprise directory and 30 days of demo data. The yellow **DEV** bar switches identity (super admin, admin, users in every state).
+
+## Develop
 
 ```bash
-make db      # PostgreSQL in docker compose
-make run     # go run with DEMO_SEED=true
-```
-
-A yellow **DEV** bar lets you switch identity (super admin, admin, user in every state).
-
-## Tests
-
-```bash
-make test        # unit tests
-make db test-int # unit + integration tests against PostgreSQL (race detector on)
+make db        # PostgreSQL (docker compose)
+make run       # portal on :8080 with demo data
+make test-int  # unit + integration tests (race detector)
+make lint      # gofmt + go vet
 ```
 
 ## Documentation
 
-The full documentation lives in the **[project wiki](../../wiki)**: architecture and decisions, functional specification, request lifecycle, Google APIs and permissions, data model, KPIs, security, configuration, deployment, runbook.
+The documentation lives in the **[wiki](../../wiki)** — architecture and decisions, functional specification, notifications, Google APIs and permissions, enterprise directory, KPIs, security, configuration, deployment, runbook, CI. Sources: [`docs/wiki/`](docs/wiki). Design language: [`DESIGN.md`](DESIGN.md).
 
-Wiki pages are versioned in [`docs/wiki/`](docs/wiki) and published to the GitHub wiki by the `Publish wiki` workflow.
+## Contributing & security
 
-Design language and its changelog: [`DESIGN.md`](DESIGN.md).
+Issues and pull requests are welcome. Please report vulnerabilities privately (see [SECURITY.md](SECURITY.md)).
 
-## Repository layout
+## Support
 
-```
-cmd/gcalm            portal binary (APP_MODE=web | worker | all)
-cmd/edsim            enterprise directory simulator (HTTP)
-config/              roles.yaml (admins, in git) · policy.yaml (business rules)
-internal/            domain · service · store · gcp · directory · web · jobs · …
-deploy/terraform     Google Cloud infrastructure
-docs/wiki            wiki sources
-```
+If this project saves you time, you can [buy me a coffee ☕](https://buymeacoffee.com/francoisgn).
+
+## License
+
+[Apache License 2.0](LICENSE). Google, Google Cloud, Gemini and Gemini Code Assist are trademarks of Google LLC; this project is not affiliated with or endorsed by Google (see [NOTICE](NOTICE)).

@@ -13,6 +13,30 @@ import (
 	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/telemetry"
 )
 
+// =============================================================================
+// Notification events — one e-mail per step change. Each event can be
+// disabled in policy.yaml (notifications). Every attempt is journaled in the
+// notifications table (Admin → Notifications), including disabled ones.
+//
+// Admin approval: ONE e-mail when the license is assigned right away
+// ("license active", mentioning the approval); TWO when it is not
+// (approval with the queue position / "in progress", then "license active").
+// =============================================================================
+const (
+	EvRequestEscalated    = "request_escalated"    // user: request under administrator review
+	EvAdminEscalation     = "admin_new_escalation" // administrators: new escalation to review
+	EvRequestApproved     = "request_approved"     // user: approved, license not active yet
+	EvRequestRejected     = "request_rejected"     // user: rejected
+	EvLicenseAssigned     = "license_assigned"     // user: license active (end of the process)
+	EvQueued              = "queued"               // user: pool exhausted, waiting list position
+	EvBuffered            = "buffered"             // user: timeout, automatic retry
+	EvActionRequired      = "action_required"      // user: directory KO after a retry
+	EvRemovedUnused       = "removed_unused"       // user: 7 days without usage
+	EvRemovedExpired      = "removed_expired"      // user: requested duration elapsed
+	EvRemovedAdmin        = "removed_admin"        // user: removed by an administrator
+	EvRemovedSubscription = "removed_subscription" // user: no seat in the renewed subscription
+)
+
 // Mail template data. Field names are used by internal/mail/templates.
 type mailBase struct {
 	Name      string
@@ -29,6 +53,14 @@ type assignedMail struct {
 	DurationLabel string
 	ProjectID     string
 	UnusedDays    int
+	ApprovedBy    string // set when an administrator approved the request
+}
+
+type approvedMail struct {
+	mailBase
+	ApprovedBy string
+	Queued     bool
+	Position   int
 }
 
 type removedMail struct {
@@ -37,11 +69,18 @@ type removedMail struct {
 	Until      time.Time
 	Reason     string
 	ReasonHint string
+	Requeued   bool
 }
 
 type queuedMail struct {
 	mailBase
 	Position int
+}
+
+type bufferedMail struct {
+	mailBase
+	Step       string
+	RetryEvery string
 }
 
 type rejectedMail struct {
@@ -55,6 +94,23 @@ type actionMail struct {
 	Reason string
 }
 
+type escalatedMail struct {
+	mailBase
+	Reason string
+	Admins []string
+}
+
+type adminEscalationMail struct {
+	mailBase
+	Requester string
+	Reason    string
+	Division  string
+	Entity    string
+	Project   string
+	Comment   string
+	External  bool
+}
+
 func (s *Service) base(email string) mailBase {
 	return mailBase{
 		Name: auth.Identity{Email: email}.DisplayName(), Email: email,
@@ -62,31 +118,90 @@ func (s *Service) base(email string) mailBase {
 	}
 }
 
-// send renders and sends one e-mail, recording it in telemetry.
-func (s *Service) send(ctx context.Context, tpl, to, subject string, data any) error {
+// notify renders and sends one e-mail if the event is enabled, and journals
+// the attempt. It never fails the caller: e-mail is best effort (the license
+// confirmation is retried by the buffer job).
+func (s *Service) notify(ctx context.Context, event, tpl, to, subject string, data any, requestID *int64) bool {
+	n := store.Notification{Event: event, Recipient: to, Subject: subject, RequestID: requestID}
+	defer func() {
+		wctx, cancel := detached(ctx, 5*time.Second)
+		defer cancel()
+		if err := s.DB.InsertNotification(wctx, n); err != nil {
+			slog.Error("journal notification", "err", err)
+		}
+	}()
+	if !s.Policy.Notify(event) {
+		n.Status = "DISABLED"
+		return false
+	}
 	msg, err := s.Mails.Render(tpl, to, subject, data)
 	if err != nil {
 		slog.Error("render e-mail", "template", tpl, "err", err)
-		return err
+		n.Status, n.Error = "FAILED", ptr(err.Error())
+		return false
 	}
+	n.BodyText = msg.Text
 	mctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
-	return s.Recorder.Observe(mctx, telemetry.TargetMail, tpl, func(ctx context.Context) error {
+	err = s.Recorder.Observe(mctx, telemetry.TargetMail, event, func(ctx context.Context) error {
 		return s.Mailer.Send(ctx, msg)
 	})
+	if err != nil {
+		n.Status, n.Error = "FAILED", ptr(err.Error())
+		return false
+	}
+	n.Status = "SENT"
+	return true
 }
 
-// notifyOutcome sends the e-mail matching a pipeline outcome.
-func (s *Service) notifyOutcome(ctx context.Context, req *store.Request, res *FulfilResult) {
+// notifyOutcome sends the e-mail matching a pipeline outcome. approval is
+// true when the pipeline runs right after an administrator approval.
+func (s *Service) notifyOutcome(ctx context.Context, req *store.Request, res *FulfilResult, approval bool) {
 	switch res.Outcome {
 	case OutcomeAssigned:
 		res.EmailSent = s.sendAssigned(ctx, req, res.Assignment)
 		res.Steps = s.stepsFor(req, nil)
 	case OutcomeQueued:
-		if res.newlyQueued {
-			_ = s.send(ctx, "queued", req.UserEmail, "You are in the Gemini Code Assist waiting list",
-				queuedMail{mailBase: s.base(req.UserEmail), Position: res.QueuePosition})
+		switch {
+		case approval:
+			s.notify(ctx, EvRequestApproved, "approved", req.UserEmail, "Your Gemini Code Assist request is approved",
+				approvedMail{mailBase: s.base(req.UserEmail), ApprovedBy: approverName(req), Queued: true, Position: res.QueuePosition}, &req.ID)
+		case res.newlyQueued:
+			s.notify(ctx, EvQueued, "queued", req.UserEmail, "You are in the Gemini Code Assist waiting list",
+				queuedMail{mailBase: s.base(req.UserEmail), Position: res.QueuePosition}, &req.ID)
 		}
+	case OutcomeBuffered:
+		switch {
+		case approval:
+			s.notify(ctx, EvRequestApproved, "approved", req.UserEmail, "Your Gemini Code Assist request is approved",
+				approvedMail{mailBase: s.base(req.UserEmail), ApprovedBy: approverName(req)}, &req.ID)
+		case res.newlyBuffered:
+			s.notifyBuffered(ctx, req, res.BufferStage)
+		}
+	}
+}
+
+// notifyBuffered tells the user that a service timed out and that the
+// request is retried automatically (sent once per request).
+func (s *Service) notifyBuffered(ctx context.Context, req *store.Request, stage domain.BufferStage) {
+	step := map[domain.BufferStage]string{
+		domain.StageDirectory: "directory validation", domain.StageCredentials: "cloud credentials", domain.StageLicense: "license assignment",
+	}[stage]
+	s.notify(ctx, EvBuffered, "buffered", req.UserEmail, "Your Gemini Code Assist request is delayed",
+		bufferedMail{mailBase: s.base(req.UserEmail), Step: step, RetryEvery: strconv.Itoa(int(s.Cfg.BufferRetryEvery.Minutes())) + " minutes"}, &req.ID)
+}
+
+// notifyEscalated confirms the escalation to the user and alerts the
+// administrators (super admins excluded, as in the contact list).
+func (s *Service) notifyEscalated(ctx context.Context, req *store.Request) {
+	admins := s.Roles.Admins()
+	s.notify(ctx, EvRequestEscalated, "escalated", req.UserEmail, "Your Gemini Code Assist request is under review",
+		escalatedMail{mailBase: s.base(req.UserEmail), Reason: strOr(req.DirReason, ""), Admins: admins}, &req.ID)
+	for _, admin := range admins {
+		s.notify(ctx, EvAdminEscalation, "admin_escalation", admin, "[GCA portal] New request to review: "+req.UserEmail,
+			adminEscalationMail{mailBase: s.base(admin), Requester: req.UserEmail, Reason: strOr(req.DirReason, ""),
+				Division: strOr(req.EscDivision, ""), Entity: strOr(req.EscEntity, ""), Project: strOr(req.EscProject, ""),
+				Comment: strOr(req.EscComment, ""), External: s.Policy.IsExternal(req.UserEmail)}, &req.ID)
 	}
 }
 
@@ -95,12 +210,13 @@ func (s *Service) sendAssigned(ctx context.Context, req *store.Request, a *store
 	if a == nil {
 		return false
 	}
-	err := s.send(ctx, "assigned", req.UserEmail, "Your Gemini Code Assist license is active", assignedMail{
+	ok := s.notify(ctx, EvLicenseAssigned, "assigned", req.UserEmail, "Your Gemini Code Assist license is active", assignedMail{
 		mailBase: s.base(req.UserEmail), RequestDate: req.CreatedAt, AssignDate: a.AssignedAt, EndDate: a.ExpiresAt,
 		DurationLabel: a.Duration.Label(), ProjectID: s.Cfg.GCAProjectID, UnusedDays: s.Policy.UnusedDays,
-	})
-	if err != nil {
-		return false // retried by the buffer job (AssignedWithoutEmail)
+		ApprovedBy: approverName(req),
+	}, &req.ID)
+	if !ok {
+		return false // retried by the buffer job (AssignedWithoutEmail) unless disabled
 	}
 	now := s.Now()
 	req.EmailAt = &now
@@ -112,25 +228,43 @@ func (s *Service) sendAssigned(ctx context.Context, req *store.Request, a *store
 	return true
 }
 
+// approverName returns the display name of the approving administrator.
+func approverName(req *store.Request) string {
+	if req == nil || req.Decision == nil || *req.Decision != domain.DecisionApproved || req.DecidedBy == nil || req.Origin != "FORM" {
+		return ""
+	}
+	return auth.Identity{Email: *req.DecidedBy}.DisplayName()
+}
+
 // notifyRemoved informs users that their license was removed.
 func (s *Service) notifyRemoved(ctx context.Context, removed []store.Assignment, reason domain.EndReason) {
-	hint := ""
+	event, hint := "", ""
 	switch reason {
 	case domain.EndUnused:
-		hint = "the license was not used for the last " + strconv.Itoa(s.Policy.UnusedDays) + " days"
+		event, hint = EvRemovedUnused, "the license was not used for the last "+strconv.Itoa(s.Policy.UnusedDays)+" days"
 	case domain.EndExpired:
-		hint = "the requested duration has elapsed"
+		event, hint = EvRemovedExpired, "the requested duration has elapsed"
+	case domain.EndAdminRemoval:
+		event, hint = EvRemovedAdmin, "an administrator removed it"
+	case domain.EndSubscriptionEnded:
+		event, hint = EvRemovedSubscription, "the renewed subscription has fewer seats"
+	default:
+		return // removed outside the portal: no e-mail
 	}
 	now := s.Now()
 	for _, a := range removed {
-		_ = s.send(ctx, "removed", a.UserEmail, "Your Gemini Code Assist license was removed", removedMail{
+		s.notify(ctx, event, "removed", a.UserEmail, "Your Gemini Code Assist license was removed", removedMail{
 			mailBase: s.base(a.UserEmail), Since: a.AssignedAt, Until: now, Reason: reason.Label(), ReasonHint: hint,
-		})
+			Requeued: reason == domain.EndSubscriptionEnded,
+		}, a.RequestID)
 	}
 }
 
 // RetryEmails re-sends the confirmation e-mails that failed.
 func (s *Service) RetryEmails(ctx context.Context) (int, error) {
+	if !s.Policy.Notify(EvLicenseAssigned) {
+		return 0, nil
+	}
 	reqs, err := s.DB.AssignedWithoutEmail(ctx, s.Now().AddDate(0, 0, -7))
 	if err != nil {
 		return 0, err
@@ -150,4 +284,9 @@ func (s *Service) RetryEmails(ctx context.Context) (int, error) {
 		}
 	}
 	return sent, nil
+}
+
+// Notifications returns the latest journal entries ("" = everyone).
+func (s *Service) Notifications(ctx context.Context, recipient string) ([]store.Notification, error) {
+	return s.DB.ListNotifications(ctx, domain.NormalizeEmail(recipient), 200)
 }

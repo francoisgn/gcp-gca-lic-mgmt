@@ -49,17 +49,20 @@ func TestDefaultsAndValidation(t *testing.T) {
 }
 
 func TestEligibility(t *testing.T) {
-	p, _ := Parse([]byte(`eligibility: {allowed_gps_codes: ["A3F09C1E"], allowed_business_units: ["412"]}`))
+	p, err := Parse([]byte(`eligibility: {allowed_business_units: ["412"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
 	e := p.Eligibility
+	// The GPS allowlist is a database table (checked by the service).
 	cases := []struct {
 		status, bu, gps string
 		ok              bool
 	}{
-		{"OK", "412", "a3f09c1e", true}, // case-insensitive GPS match
+		{"OK", "412", "a3f09c1e", true},
 		{"KO", "412", "a3f09c1e", false},
 		{"OK", "412", "", false},
 		{"OK", "412", "zz", false},
-		{"OK", "412", "00000000", false},
 		{"OK", "999", "a3f09c1e", false},
 	}
 	for _, c := range cases {
@@ -70,5 +73,26 @@ func TestEligibility(t *testing.T) {
 	open, _ := Parse([]byte(`{}`))
 	if ok, _ := open.Eligibility.Evaluate("OK", "123", "deadbeef"); !ok {
 		t.Error("open policy should accept any valid GPS code")
+	}
+}
+
+func TestExternalAccountsAndNotifications(t *testing.T) {
+	p, err := Parse([]byte("accounts: {external_suffix: \".ext\"}\nnotifications: {buffered: false}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for email, want := range map[string]bool{
+		"jane.doe.ext@example.com": true, "Jane.Doe.EXT@example.com": true,
+		"jane.doe@example.com": false, "jane.extern@example.com": false, "ext@example.com": false,
+	} {
+		if p.IsExternal(email) != want {
+			t.Errorf("IsExternal(%s) != %v", email, want)
+		}
+	}
+	if p.Notify("buffered") || !p.Notify("license_assigned") {
+		t.Fatal("Notify")
+	}
+	if _, err := Parse([]byte("unknown_key: 1")); err == nil {
+		t.Fatal("unknown key accepted")
 	}
 }

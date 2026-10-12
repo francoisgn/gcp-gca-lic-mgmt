@@ -69,28 +69,6 @@ variable "time_zone" {
   default     = "Europe/Paris"
 }
 
-variable "directory_url" {
-  description = "Base URL of the enterprise directory API."
-  type        = string
-}
-
-variable "mail_from" {
-  description = "Sender of the portal e-mails."
-  type        = string
-}
-
-variable "tracker_mode" {
-  description = "Feedback tracker: jira, gitlab or log."
-  type        = string
-  default     = "jira"
-}
-
-variable "tracker_env" {
-  description = "Non secret tracker settings (JIRA_URL, JIRA_USER, JIRA_PROJECT or GITLAB_URL, GITLAB_PROJECT)."
-  type        = map(string)
-  default     = {}
-}
-
 variable "alert_email" {
   description = "E-mail notified by the alerting policies."
   type        = string

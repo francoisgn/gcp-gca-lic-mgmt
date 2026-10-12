@@ -50,7 +50,12 @@ func (s *Service) Approve(ctx context.Context, admin string, requestID int64) (*
 	}
 	jctx, cancel := s.jobCtx(ctx, telemetry.KindAdmin)
 	defer cancel()
-	return s.fulfil(jctx, req, domain.SourceAdmin, admin, domain.PriorityNormal)
+	res, err := s.fulfilSteps(jctx, req, domain.SourceAdmin, admin, domain.PriorityNormal)
+	if err != nil {
+		return nil, err
+	}
+	s.notifyOutcome(ctx, req, res, true) // one e-mail if active now, two otherwise
+	return res, nil
 }
 
 // Reject rejects an escalated request. The rejection history is kept.
@@ -82,8 +87,8 @@ func (s *Service) Reject(ctx context.Context, admin string, requestID int64, rea
 	if err != nil {
 		return err
 	}
-	_ = s.send(ctx, "rejected", req.UserEmail, "Your Gemini Code Assist request was rejected",
-		rejectedMail{mailBase: s.base(req.UserEmail), DecidedAt: req.DecidedAt, Reason: reason})
+	s.notify(ctx, EvRequestRejected, "rejected", req.UserEmail, "Your Gemini Code Assist request was rejected",
+		rejectedMail{mailBase: s.base(req.UserEmail), DecidedAt: req.DecidedAt, Reason: reason}, &req.ID)
 	return nil
 }
 
@@ -190,7 +195,7 @@ func (s *Service) Unassign(ctx context.Context, admin string, emails []string) (
 // caller passes the count it previewed: if the selection changed meanwhile
 // the operation is refused (protection against surprises in mass removal).
 func (s *Service) UnassignByFilter(ctx context.Context, admin string, f store.InventoryFilter, expected int) (*UnassignResult, error) {
-	emails, err := s.DB.InventoryEmails(ctx, f, s.Now())
+	emails, err := s.DB.InventoryEmails(ctx, f, s.Policy.Accounts.ExternalSuffix, s.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +252,7 @@ func (s *Service) Transfer(ctx context.Context, admin, from, to, duration string
 	}
 	_ = s.DB.Audit(ctx, admin, "license.transfer", from+" -> "+to, map[string]any{"duration": duration, "outcome": res.Outcome})
 	s.notifyRemoved(ctx, removed, domain.EndAdminRemoval)
-	s.notifyOutcome(ctx, req, res)
+	s.notifyOutcome(ctx, req, res, false)
 	return res, nil
 }
 
@@ -459,13 +464,15 @@ func (s *Service) ResolveDeviation(ctx context.Context, admin string, id int64, 
 
 // AdminOverview is the content of the admin page.
 type AdminOverview struct {
-	Pending   []store.Request
-	Queue     []store.QueueEntry
-	Buffer    []store.BufferEntry
-	Abandoned []store.BufferEntry
-	Decisions []store.Request
-	Audit     []store.AuditEntry
-	Counter   PoolCounter
+	Pending       []store.Request
+	Queue         []store.QueueEntry
+	Buffer        []store.BufferEntry
+	Abandoned     []store.BufferEntry
+	Decisions     []store.Request
+	Audit         []store.AuditEntry
+	Counter       PoolCounter
+	GPSCodes      []store.GPSCode
+	Notifications []store.Notification
 }
 
 // Overview loads the admin page.
@@ -490,6 +497,12 @@ func (s *Service) Overview(ctx context.Context) (*AdminOverview, error) {
 	if o.Audit, err = s.DB.ListAudit(ctx, 50); err != nil {
 		return nil, err
 	}
+	if o.GPSCodes, err = s.DB.ListGPSCodes(ctx); err != nil {
+		return nil, err
+	}
+	if o.Notifications, err = s.DB.ListNotifications(ctx, "", 100); err != nil {
+		return nil, err
+	}
 	return o, nil
 }
 
@@ -505,6 +518,7 @@ type InventoryRow struct {
 	GoogleLastUsage *time.Time `json:"googleLastUsage"`
 	InGoogle        bool       `json:"inGoogle"`
 	UnusedDays      int        `json:"unusedDays"`
+	External        bool       `json:"external"`
 }
 
 // InventoryView is the inventory with its facets.
@@ -518,7 +532,7 @@ type InventoryView struct {
 // what Google reports (source of truth).
 func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter) (*InventoryView, error) {
 	now := s.Now()
-	rows, total, err := s.DB.Inventory(ctx, f, now, 1000)
+	rows, total, err := s.DB.Inventory(ctx, f, s.Policy.Accounts.ExternalSuffix, now, 1000)
 	if err != nil {
 		return nil, err
 	}
@@ -529,7 +543,7 @@ func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter) (*Inve
 	snap, _ := s.pool.Get(ctx)
 	v := &InventoryView{Total: total, Facets: facets, Rows: make([]InventoryRow, 0, len(rows))}
 	for _, a := range rows {
-		r := InventoryRow{Assignment: a}
+		r := InventoryRow{Assignment: a, External: s.Policy.IsExternal(a.UserEmail)}
 		if gu, ok := snap.Has(a.UserEmail); ok {
 			r.InGoogle = true
 			r.GoogleLastUsage = gu.RecentUsage
@@ -553,4 +567,80 @@ func validEmail(s string) (string, error) {
 		return "", badRequest("%q is not a valid e-mail address.", s)
 	}
 	return s, nil
+}
+
+// =============================================================================
+// GPS code allowlist (automatic approval) — administrators
+// =============================================================================
+
+// GPSCodes returns the allowlist.
+func (s *Service) GPSCodes(ctx context.Context) ([]store.GPSCode, error) {
+	return s.DB.ListGPSCodes(ctx)
+}
+
+// AddGPSCodes adds one or several codes (separated by spaces, commas,
+// semicolons or new lines). Returns the number of new codes; invalid codes
+// reject the whole input.
+func (s *Service) AddGPSCodes(ctx context.Context, admin, raw, description string) (int64, error) {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\r' || r == '\t'
+	})
+	if len(fields) == 0 {
+		return 0, badRequest("Enter at least one GPS code.")
+	}
+	var codes, invalid []string
+	for _, f := range fields {
+		c := strings.ToLower(strings.TrimSpace(f))
+		if !s.Policy.Eligibility.ValidGPSCode(c) {
+			invalid = append(invalid, f)
+			continue
+		}
+		codes = append(codes, c)
+	}
+	if len(invalid) > 0 {
+		return 0, badRequest("Invalid GPS code(s): %s (expected format %s).", strings.Join(invalid, ", "), s.Policy.Eligibility.GPSCodePattern)
+	}
+	slices.Sort(codes)
+	codes = slices.Compact(codes)
+	description = strings.TrimSpace(description)
+	if len([]rune(description)) > 200 {
+		return 0, badRequest("The description is limited to 200 characters.")
+	}
+	n, err := s.DB.AddGPSCodes(ctx, codes, description, admin)
+	if err != nil {
+		return 0, err
+	}
+	_ = s.DB.Audit(ctx, admin, "gps.add", strings.Join(codes, ","), map[string]any{"description": description, "added": n})
+	return n, nil
+}
+
+// RemoveGPSCode removes a code from the allowlist. Licenses already granted
+// are kept; the nightly re-check flags them as no longer eligible.
+func (s *Service) RemoveGPSCode(ctx context.Context, admin, code string) error {
+	ok, err := s.DB.RemoveGPSCode(ctx, strings.TrimSpace(code))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return notFound("GPS code not found.")
+	}
+	_ = s.DB.Audit(ctx, admin, "gps.remove", strings.ToLower(code), nil)
+	return nil
+}
+
+// AcknowledgeDrift accepts the new directory values of the selected licenses
+// as their baseline (clears the "directory changed" flag).
+func (s *Service) AcknowledgeDrift(ctx context.Context, admin string, emails []string) (int64, error) {
+	if len(emails) == 0 {
+		return 0, badRequest("No user selected.")
+	}
+	for i := range emails {
+		emails[i] = domain.NormalizeEmail(emails[i])
+	}
+	n, err := s.DB.AcknowledgeDrift(ctx, emails)
+	if err != nil {
+		return 0, err
+	}
+	_ = s.DB.Audit(ctx, admin, "directory.acknowledge", fmt.Sprintf("%d users", n), map[string]any{"emails": emails})
+	return n, nil
 }

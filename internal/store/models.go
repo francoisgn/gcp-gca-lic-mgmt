@@ -98,6 +98,18 @@ type Assignment struct {
 	EndedAt        *time.Time              `db:"ended_at" json:"endedAt"`
 	EndReason      *domain.EndReason       `db:"end_reason" json:"endReason"`
 	EndedBy        *string                 `db:"ended_by" json:"endedBy"`
+
+	// Monthly directory re-check (see service/recheck.go).
+	DirCheckedAt           *time.Time `db:"dir_checked_at" json:"dirCheckedAt"`
+	DirCheckResult         *string    `db:"dir_check_result" json:"dirCheckResult"` // OK | CHANGED | INELIGIBLE | ERROR
+	DirCheckError          *string    `db:"dir_check_error" json:"dirCheckError"`
+	DirCurrentStatus       *string    `db:"dir_current_status" json:"dirCurrentStatus"`
+	DirCurrentSite         *string    `db:"dir_current_site" json:"dirCurrentSite"`
+	DirCurrentBusinessUnit *string    `db:"dir_current_business_unit" json:"dirCurrentBusinessUnit"`
+	DirCurrentGPSCode      *string    `db:"dir_current_gps_code" json:"dirCurrentGpsCode"`
+	DriftFields            []string   `db:"drift_fields" json:"driftFields"`
+	DriftDetectedAt        *time.Time `db:"drift_detected_at" json:"driftDetectedAt"`
+	IneligibleReason       *string    `db:"ineligible_reason" json:"ineligibleReason"`
 }
 
 // QueueEntry mirrors a row of the queue_entries table.
@@ -184,4 +196,26 @@ type JobRun struct {
 	Status     string     `db:"status" json:"status"`
 	Summary    *string    `db:"summary" json:"summary"`
 	Error      *string    `db:"error" json:"error"`
+}
+
+// GPSCode is an entry of the allowlist of GPS codes.
+type GPSCode struct {
+	Code        string    `db:"code" json:"code"`
+	Description string    `db:"description" json:"description"`
+	AddedBy     string    `db:"added_by" json:"addedBy"`
+	AddedAt     time.Time `db:"added_at" json:"addedAt"`
+	Licenses    int       `db:"licenses" json:"licenses"` // active licenses carrying this code
+}
+
+// Notification is an entry of the e-mail journal.
+type Notification struct {
+	ID        int64     `db:"id" json:"id"`
+	TS        time.Time `db:"ts" json:"ts"`
+	Event     string    `db:"event" json:"event"`
+	Recipient string    `db:"recipient" json:"recipient"`
+	Subject   string    `db:"subject" json:"subject"`
+	BodyText  string    `db:"body_text" json:"bodyText"`
+	Status    string    `db:"status" json:"status"`
+	Error     *string   `db:"error" json:"error"`
+	RequestID *int64    `db:"request_id" json:"requestId"`
 }

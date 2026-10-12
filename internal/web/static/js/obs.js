@@ -224,7 +224,20 @@
   // ---------------------------------------------------------------------------
   // Inventory: filter chips, selection, removal
   // ---------------------------------------------------------------------------
-  const inv = { filter: { search: '', sites: [], businessUnits: [], sources: [], unusedDaysMin: 0, expiresInDays: 0 }, rows: [], total: 0, selected: new Set(), facetsBuilt: false };
+  const inv = { filter: { search: '', sites: [], businessUnits: [], sources: [], unusedDaysMin: 0, expiresInDays: 0, accountType: '', directoryCheck: [] }, rows: [], total: 0, selected: new Set(), facetsBuilt: false };
+
+  const DIR_LABEL = { CHANGED: 'Data changed', INELIGIBLE: 'No longer eligible', ERROR: 'Check failed', UNCHECKED: 'Never checked' };
+
+  /** Badge of the monthly directory re-check of a license. */
+  function dirBadge(r) {
+    if (r.ineligibleReason) return el('span', { class: 'badge badge--ko', title: r.ineligibleReason }, 'not eligible');
+    if ((r.driftFields || []).length) {
+      return el('span', { class: 'badge badge--warn', title: `Changed since assignment: ${r.driftFields.join(', ')} (now ${r.dirCurrentSite || '—'} / ${r.dirCurrentBusinessUnit || '—'} / ${r.dirCurrentGpsCode || '—'})` }, 'changed');
+    }
+    if (r.dirCheckResult === 'ERROR') return el('span', { class: 'badge badge--warn', title: r.dirCheckError || '' }, 'check failed');
+    if (!r.dirCheckedAt) return el('span', { class: 'badge badge--plain' }, 'not checked');
+    return el('span', { class: 'badge badge--ok', title: `Checked ${date(r.dirCheckedAt)}` }, 'ok');
+  }
 
   function chipGroup(label, values, key, { single = false, render = (v) => v } = {}) {
     const group = el('div', { class: 'filter-group', role: 'group', 'aria-label': label }, el('span', { class: 'filter-group__label' }, label));
@@ -234,7 +247,7 @@
         const on = chip.getAttribute('aria-pressed') !== 'true';
         if (single) {
           group.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', 'false'));
-          inv.filter[key] = on ? v : 0;
+          inv.filter[key] = on ? v : (typeof v === 'string' ? '' : 0);
         } else {
           const set = new Set(inv.filter[key]);
           on ? set.add(v) : set.delete(v);
@@ -253,7 +266,9 @@
     box.replaceChildren(
       chipGroup('Site', f.sites || [], 'sites'),
       chipGroup('Business unit', f.businessUnits || [], 'businessUnits'),
+      chipGroup('Account', ['internal', 'external'], 'accountType', { single: true, render: (v) => (v === 'external' ? `External (*${page.externalSuffix}@)` : 'Internal') }),
       chipGroup('Source', f.sources || [], 'sources', { render: (v) => v.toLowerCase() }),
+      chipGroup('Directory check', ['CHANGED', 'INELIGIBLE', 'ERROR', 'UNCHECKED'], 'directoryCheck', { render: (v) => DIR_LABEL[v] }),
       chipGroup('Unused for', [page.unusedDays || 7, 14, 30], 'unusedDaysMin', { single: true, render: (v) => `≥ ${v} days` }),
       chipGroup('Expires within', [7, 30], 'expiresInDays', { single: true, render: (v) => `${v} days` }),
     );
@@ -269,7 +284,7 @@
     const body = document.getElementById('inv-body');
     document.getElementById('inv-count').textContent = `${v.total} license${v.total > 1 ? 's' : ''} match${v.total > 1 ? '' : 'es'}`;
     if (!v.rows.length) {
-      body.replaceChildren(el('tr', {}, el('td', { colspan: 9, class: 'table-empty' }, 'No license matches these filters.')));
+      body.replaceChildren(el('tr', {}, el('td', { colspan: 10, class: 'table-empty' }, 'No license matches these filters.')));
     } else {
       body.replaceChildren(...v.rows.map((r) => {
         const cb = el('input', { type: 'checkbox', 'aria-label': `Select ${r.userEmail}` });
@@ -278,13 +293,14 @@
         const usage = r.googleLastUsage || r.lastUsageAt;
         return el('tr', {},
           el('td', {}, cb),
-          el('td', {}, r.userEmail),
+          el('td', {}, r.userEmail, r.external ? el('span', { class: 'sub' }, el('span', { class: 'badge badge--accent' }, 'external')) : null),
           el('td', {}, r.site || '—'),
           el('td', {}, r.businessUnit || '—'),
           el('td', {}, el('span', { class: `badge ${r.source === 'AUTO' ? 'badge--ok' : r.source === 'ADMIN' ? 'badge--info' : 'badge--accent'}` }, r.source.toLowerCase())),
           el('td', {}, date(r.assignedAt)),
           el('td', {}, date(r.expiresAt), el('span', { class: 'sub' }, relative(r.expiresAt))),
           el('td', {}, usage ? date(usage) : 'Never', el('span', { class: `sub ${r.unusedDays >= (page.unusedDays || 7) - 2 ? 'text-warn' : ''}` }, `${r.unusedDays} day(s) without usage`)),
+          el('td', {}, dirBadge(r), r.dirCheckedAt ? el('span', { class: 'sub' }, date(r.dirCheckedAt)) : null),
           el('td', {}, r.inGoogle ? el('span', { class: 'badge badge--ok' }, 'yes') : el('span', { class: 'badge badge--ko' }, 'missing')));
       }));
     }
@@ -295,6 +311,8 @@
     const n = inv.selected.size;
     document.getElementById('inv-selected').textContent = `${n} selected · ${inv.total} matching the filters`;
     document.getElementById('inv-remove-selected').disabled = n === 0;
+    document.getElementById('inv-recheck').disabled = n === 0 || n > 50;
+    document.getElementById('inv-ack').disabled = n === 0;
     const matching = document.getElementById('inv-remove-matching');
     matching.disabled = inv.total === 0;
     matching.textContent = `Remove all matching (${inv.total})`;
@@ -327,6 +345,27 @@
     if (!ok) return;
     await busy(e.currentTarget, async () => {
       try { removalResult(await api('POST', '/api/admin/unassign', { emails }, { timeoutMs: 120000 })); } catch (err) { toast(err.message, 'ko'); }
+    });
+  });
+
+  document.getElementById('inv-recheck').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    try {
+      const res = await api('POST', '/api/admin/directory/recheck', { emails: [...inv.selected] }, { timeoutMs: 120000 });
+      const counts = Object.values(res.results).reduce((a, v) => { a[v] = (a[v] || 0) + 1; return a; }, {});
+      toast(`Directory re-check: ${Object.entries(counts).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ')}`, 'ok', 7000);
+      loadInventory();
+    } catch (err) { toast(err.message, 'ko'); }
+  }));
+
+  document.getElementById('inv-ack').addEventListener('click', async (e) => {
+    const { ok } = await confirm({ title: `Accept the directory changes of ${inv.selected.size} license(s)?`, text: 'The current site, business unit and GPS code become the reference. "No longer eligible" flags are kept until the cause is fixed.', confirmLabel: 'Accept' });
+    if (!ok) return;
+    await busy(e.currentTarget, async () => {
+      try {
+        const res = await api('POST', '/api/admin/directory/acknowledge', { emails: [...inv.selected] });
+        toast(`${res.acknowledged} license(s) updated.`, 'ok');
+        loadInventory();
+      } catch (err) { toast(err.message, 'ko'); }
     });
   });
 

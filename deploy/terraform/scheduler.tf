@@ -9,6 +9,7 @@ locals {
     "queue"                = { schedule = "3-59/7 * * * *", deadline = "360s" } # waiting list
     "subscription-refresh" = { schedule = "0 */3 * * *", deadline = "900s" }    # every 3 h
     "purge"                = { schedule = "15 * * * *", deadline = "900s" }     # hourly
+    "directory-recheck"    = { schedule = "30 2 * * *", deadline = "1800s" }    # nightly, monthly per license
     "housekeeping"         = { schedule = "30 3 * * *", deadline = "600s" }     # daily
   }
 }

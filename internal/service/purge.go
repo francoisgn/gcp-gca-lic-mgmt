@@ -89,8 +89,8 @@ func (s *Service) Purge(ctx context.Context) (string, error) {
 	return fmt.Sprintf("expired=%d unused=%d failed=%d", len(expired), len(unused), failed), nil
 }
 
-// Housekeeping is the daily cleanup job: technical KPIs retention (10 days)
-// and job history (30 days).
+// Housekeeping is the daily cleanup job: technical KPIs retention (10 days),
+// job history (30 days) and notification journal (90 days).
 func (s *Service) Housekeeping(ctx context.Context) (string, error) {
 	now := s.Now()
 	calls, err := s.DB.PurgeAPICalls(ctx, now.Add(-s.Cfg.MetricsRetention))
@@ -101,5 +101,9 @@ func (s *Service) Housekeeping(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("api_calls_deleted=%d job_runs_deleted=%d", calls, runs), nil
+	notifs, err := s.DB.PurgeNotifications(ctx, now.AddDate(0, 0, -90))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("api_calls_deleted=%d job_runs_deleted=%d notifications_deleted=%d", calls, runs, notifs), nil
 }

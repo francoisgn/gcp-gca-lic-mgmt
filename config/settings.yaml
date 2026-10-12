@@ -1,0 +1,41 @@
+# -----------------------------------------------------------------------------
+# Integration settings — PRODUCTION (APP_ENV=prod).
+# Versioned in git: connection details only, NEVER a secret.
+# Each *_secret_env key names the environment variable that Cloud Run fills
+# from Secret Manager (deploy/terraform/secrets.tf). Any value can be
+# overridden by an environment variable (see the Configuration wiki page).
+# -----------------------------------------------------------------------------
+
+directory:
+  mode: http
+  base_url: https://directory.example.com/api
+  timeout: 5s
+  lookup:
+    path: /v1/accounts            # "{email}" in the path is also supported: /v1/accounts/{email}
+    email_param: email            # query parameter when the path has no {email}
+  auth:
+    type: bearer                  # bearer | header | none
+    header: Authorization         # header name when type = header (e.g. X-API-Key)
+    secret_env: DIRECTORY_API_KEY # <- Secret Manager: gcalm-directory-api-key
+  fields:                         # JSON fields of the answer (dotted paths for nested objects)
+    status: status
+    site: site
+    business_unit: businessUnit
+    gps_code: gpsCode
+
+tracker:
+  mode: gitlab                    # gitlab | jira | log
+  gitlab:
+    base_url: https://gitlab.example.com
+    project: platform/gca-license-portal   # numeric id or group/project
+    labels: [gca-portal, feedback]
+    token_secret_env: GITLAB_TOKEN          # <- Secret Manager: gcalm-tracker-token (scope: api)
+
+mail:
+  mode: smtp                      # smtp | log
+  from: gca-portal@example.com
+  smtp:
+    host: smtp-relay.gmail.com
+    port: 587
+    user: ""                      # empty = relay authorised by IP / domain
+    password_secret_env: SMTP_PASSWORD      # <- Secret Manager: gcalm-smtp-password

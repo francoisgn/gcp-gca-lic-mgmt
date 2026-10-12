@@ -5,7 +5,9 @@
 package policy
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"slices"
@@ -39,17 +41,34 @@ type Question struct {
 type Eligibility struct {
 	// AccountStatuses accepted as "account OK" (default: ["OK"]).
 	AccountStatuses []string `yaml:"account_statuses"`
-	// GPSCodePattern is the expected format of the GPS code.
+	// GPSCodePattern is the expected format of the GPS code. The list of GPS
+	// codes authorized for automatic approval is NOT here: it is a database
+	// table managed by administrators (Admin → GPS codes).
 	GPSCodePattern string `yaml:"gps_code_pattern"`
-	// AllowedGPSCodes restricts auto-approval to a list of GPS codes.
-	// Empty means "any GPS code matching the pattern".
-	AllowedGPSCodes []string `yaml:"allowed_gps_codes"`
 	// AllowedBusinessUnits restricts auto-approval to some business units.
 	// Empty means "any business unit".
 	AllowedBusinessUnits []string `yaml:"allowed_business_units"`
 
 	gpsRe *regexp.Regexp
 }
+
+// Accounts describes the e-mail conventions of the organization.
+type Accounts struct {
+	// ExternalSuffix identifies external accounts by the end of the local part
+	// of the e-mail: firstname.lastname.ext@example.com. External accounts are
+	// never approved automatically (an administrator can still approve them).
+	ExternalSuffix string `yaml:"external_suffix"`
+}
+
+// Recheck drives the nightly directory re-check of active licenses.
+type Recheck struct {
+	Enabled     *bool `yaml:"enabled"` // nil = enabled
+	MaxPerRun   int   `yaml:"max_per_run"`
+	Concurrency int   `yaml:"concurrency"`
+}
+
+// On reports whether the re-check is enabled (default: yes).
+func (r Recheck) On() bool { return r.Enabled == nil || *r.Enabled }
 
 // Links are external URLs displayed in the UI and in e-mails.
 type Links struct {
@@ -66,9 +85,26 @@ type Policy struct {
 	DefaultDuration   domain.Duration  `yaml:"default_duration"`
 	UnusedDays        int              `yaml:"unused_days"`
 	BufferMaxAttempts int              `yaml:"buffer_max_attempts"`
+	Accounts          Accounts         `yaml:"accounts"`
 	Eligibility       Eligibility      `yaml:"eligibility"`
-	Questions         []Question       `yaml:"questions"`
-	Links             Links            `yaml:"links"`
+	DirectoryRecheck  Recheck          `yaml:"directory_recheck"`
+	// Notifications enables / disables each e-mail event (all enabled by default).
+	Notifications map[string]bool `yaml:"notifications"`
+	Questions     []Question      `yaml:"questions"`
+	Links         Links           `yaml:"links"`
+}
+
+// Notify reports whether an e-mail event is enabled.
+func (p *Policy) Notify(event string) bool {
+	enabled, set := p.Notifications[event]
+	return !set || enabled
+}
+
+// IsExternal reports whether an e-mail belongs to an external account.
+func (p *Policy) IsExternal(email string) bool {
+	suffix := strings.ToLower(p.Accounts.ExternalSuffix)
+	local, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(email)), "@")
+	return suffix != "" && strings.HasSuffix(local, suffix)
 }
 
 // Load reads and validates the policy file.
@@ -83,8 +119,16 @@ func Load(path string) (*Policy, error) {
 // Parse builds a Policy from YAML content and applies defaults.
 func Parse(raw []byte) (*Policy, error) {
 	var p Policy
-	if err := yaml.Unmarshal(raw, &p); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	dec.KnownFields(true) // a typo in a key is an error, not a silent default
+	if err := dec.Decode(&p); err != nil && err != io.EOF {
 		return nil, fmt.Errorf("parse policy file: %w", err)
+	}
+	if p.DirectoryRecheck.MaxPerRun <= 0 {
+		p.DirectoryRecheck.MaxPerRun = 2000
+	}
+	if p.DirectoryRecheck.Concurrency <= 0 {
+		p.DirectoryRecheck.Concurrency = 4
 	}
 	if len(p.Durations) == 0 {
 		for _, c := range []string{"7d", "1M", "3M", "6M", "1Y"} {
@@ -181,20 +225,13 @@ func (e *Eligibility) Evaluate(accountStatus, businessUnit, gpsCode string) (ok 
 	if e.gpsRe != nil && !e.gpsRe.MatchString(gpsCode) {
 		return false, "The GPS code on your directory profile has an unexpected format."
 	}
-	if len(e.AllowedGPSCodes) > 0 && !containsFold(e.AllowedGPSCodes, gpsCode) {
-		return false, "Your GPS code is not eligible for automatic approval."
-	}
 	if len(e.AllowedBusinessUnits) > 0 && !slices.Contains(e.AllowedBusinessUnits, businessUnit) {
 		return false, "Your business unit is not eligible for automatic approval."
 	}
 	return true, ""
 }
 
-func containsFold(list []string, v string) bool {
-	for _, s := range list {
-		if strings.EqualFold(s, v) {
-			return true
-		}
-	}
-	return false
+// ValidGPSCode reports whether a code has the expected format.
+func (e *Eligibility) ValidGPSCode(code string) bool {
+	return e.gpsRe != nil && e.gpsRe.MatchString(code)
 }

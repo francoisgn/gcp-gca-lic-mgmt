@@ -19,7 +19,7 @@ func (s *Server) adminPage(w http.ResponseWriter, r *http.Request, _ auth.Identi
 	}
 	s.render(w, r, http.StatusOK, "admin", &Page{
 		Title: "Administration", Nav: "admin",
-		Data: map[string]any{"O": o, "Policy": s.svc.Policy, "Questions": s.svc.Policy.Questions},
+		Data: map[string]any{"O": o, "Policy": s.svc.Policy, "Questions": s.svc.Policy.Questions, "External": s.svc.Policy.Accounts.ExternalSuffix},
 		JSON: map[string]any{"durations": s.svc.Policy.Durations, "defaultDuration": s.svc.Policy.DefaultDuration},
 	})
 	return nil
@@ -39,7 +39,7 @@ func (s *Server) observabilityPage(w http.ResponseWriter, r *http.Request, id au
 		Title: "Observability", Nav: "observability",
 		Data: map[string]any{"S": sum, "Jobs": jobList, "Super": id.Role.IsSuperAdmin()},
 		JSON: map[string]any{
-			"super": id.Role.IsSuperAdmin(), "fake": s.cfg.GoogleMode == "fake",
+			"super": id.Role.IsSuperAdmin(), "fake": s.cfg.GoogleMode == "fake", "externalSuffix": s.svc.Policy.Accounts.ExternalSuffix,
 			"durations": s.svc.Policy.Durations, "defaultDuration": s.svc.Policy.DefaultDuration,
 			"unusedDays": s.svc.Policy.UnusedDays,
 		},
@@ -309,5 +309,69 @@ func (s *Server) apiSimRemove(w http.ResponseWriter, r *http.Request, id auth.Id
 		return err
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	return nil
+}
+
+// --- GPS allowlist and directory re-check ------------------------------------------
+
+func (s *Server) apiAddGPS(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	var in struct {
+		Codes       string `json:"codes"`
+		Description string `json:"description"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return err
+	}
+	n, err := s.svc.AddGPSCodes(r.Context(), id.Email, in.Codes, in.Description)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"added": n})
+	return nil
+}
+
+func (s *Server) apiRemoveGPS(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	if err := s.svc.RemoveGPSCode(r.Context(), id.Email, r.PathValue("code")); err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	return nil
+}
+
+func (s *Server) apiAcknowledgeDrift(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	var in struct {
+		Emails []string `json:"emails"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return err
+	}
+	n, err := s.svc.AcknowledgeDrift(r.Context(), id.Email, in.Emails)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"acknowledged": n})
+	return nil
+}
+
+func (s *Server) apiRecheck(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	var in struct {
+		Emails []string `json:"emails"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		return err
+	}
+	if len(in.Emails) == 0 || len(in.Emails) > 50 {
+		return &service.UserError{Status: http.StatusBadRequest, Msg: "Select between 1 and 50 users."}
+	}
+	results := map[string]string{}
+	for _, e := range in.Emails {
+		res, err := s.svc.RecheckUser(r.Context(), id.Email, e)
+		if err != nil {
+			results[e] = err.Error()
+			continue
+		}
+		results[e] = res
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 	return nil
 }

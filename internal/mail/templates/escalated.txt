@@ -1,0 +1,9 @@
+Hello {{.Name}},
+
+Your Gemini Code Assist request could not be approved automatically{{if .Reason}} ({{.Reason}}){{end}}.
+It has been sent to the administrators with the details you provided.
+{{if .Admins}}Administrators: {{range $i, $a := .Admins}}{{if $i}}, {{end}}{{$a}}{{end}}{{end}}
+
+You will receive an e-mail with their decision.
+
+Portal: {{.PortalURL}}

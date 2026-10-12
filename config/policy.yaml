@@ -18,12 +18,42 @@ unused_days: 7
 # attempts the entry is abandoned and flagged to administrators.
 buffer_max_attempts: 30
 
+# E-mail conventions: firstname.lastname@domain for employees,
+# firstname.lastname.ext@domain for external people. External accounts are
+# NEVER approved automatically (escalation to an administrator is possible).
+accounts:
+  external_suffix: ".ext"
+
 # Automatic approval rules applied to the enterprise directory answer.
+# The GPS codes authorized for automatic approval are managed by the
+# administrators in the portal (Admin → GPS codes), not in this file.
 eligibility:
   account_statuses: ["OK"]
   gps_code_pattern: "^[0-9a-fA-F]{8}$"
-  allowed_gps_codes: []        # empty = any GPS code matching the pattern
   allowed_business_units: []   # empty = any business unit
+
+# Nightly re-check of active licenses against the enterprise directory, on the
+# monthly anniversary of each assignment. Changes are flagged in the inventory.
+directory_recheck:
+  enabled: true
+  max_per_run: 2000
+  concurrency: 4
+
+# E-mail notifications (true = sent). Templates: internal/mail/templates
+# (mock-ups until the corporate wording is available).
+notifications:
+  request_escalated: true        # user: request under administrator review
+  admin_new_escalation: true     # administrators: a new escalation to review
+  request_approved: true         # user: approved, license not active yet (queued / in progress)
+  request_rejected: true         # user: rejected by an administrator
+  license_assigned: true         # user: license active (end of the process; mentions the approval if any)
+  queued: true                   # user: pool exhausted, position in the waiting list
+  buffered: true                 # user: a service timed out, automatic retry
+  action_required: true          # user: directory KO after a retry, choose withdraw / escalate
+  removed_unused: true           # user: removed after 7 days without usage
+  removed_expired: true          # user: requested duration elapsed
+  removed_admin: true            # user: removed by an administrator (incl. transfer, mass removal)
+  removed_subscription: true     # user: no seat in the renewed subscription, back in the queue
 
 # "d) Usage details" step. Mirror the fields of the current request form here.
 # Each answered question unlocks the next one.

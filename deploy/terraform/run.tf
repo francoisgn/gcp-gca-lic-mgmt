@@ -3,8 +3,11 @@
 # =============================================================================
 
 locals {
-  common_env = merge({
+  # Integration endpoints (directory, GitLab, SMTP) live in config/settings.yaml
+  # (versioned); only deployment-specific values are passed here.
+  common_env = {
     APP_ENV            = "prod"
+    SETTINGS_FILE      = "/app/config/settings.yaml"
     TIMEZONE           = var.time_zone
     BASE_URL           = local.base_url
     GOOGLE_MODE        = "real"
@@ -13,19 +16,14 @@ locals {
     GCA_PROJECT_ID     = var.gca_project_id
     CREDENTIALS_MODE   = "group"
     CREDENTIALS_GROUP  = var.gca_users_group_email
-    DIRECTORY_MODE     = "http"
-    DIRECTORY_URL      = var.directory_url
-    MAIL_MODE          = "smtp"
-    MAIL_FROM          = var.mail_from
-    TRACKER_MODE       = var.tracker_mode
-  }, var.tracker_env)
+  }
 
+  # Env var name (as referenced by *_secret_env in settings.yaml) => secret.
   secret_env = {
     DATABASE_URL      = "database-url"
     DIRECTORY_API_KEY = "directory-api-key"
-    JIRA_TOKEN        = "tracker-token"
     GITLAB_TOKEN      = "tracker-token"
-    SMTP_PASSWORD     = "smtp-password"
+    SMTP_PASSWORD     = "smtp-password" # gitleaks:allow (secret NAME, not a value)
   }
 }
 

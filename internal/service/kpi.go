@@ -20,6 +20,8 @@ type ObsSummary struct {
 	PendingAdmin  int                  `json:"pendingAdmin"`
 	Jobs          []store.JobRun       `json:"jobs"`
 	GoogleMode    string               `json:"googleMode"`
+	Mix           store.LicenseMix     `json:"mix"`
+	ExternalPct   float64              `json:"externalPct"` // external active licenses / active licenses
 }
 
 // Summary returns the observability header.
@@ -45,6 +47,12 @@ func (s *Service) Summary(ctx context.Context) (*ObsSummary, error) {
 	o.OpenDevs = len(devs)
 	if o.Jobs, err = s.DB.LastJobRuns(ctx); err != nil {
 		return nil, err
+	}
+	if o.Mix, err = s.DB.LicenseMixStats(ctx, s.Policy.Accounts.ExternalSuffix); err != nil {
+		return nil, err
+	}
+	if o.Mix.Active > 0 {
+		o.ExternalPct = float64(o.Mix.External) * 100 / float64(o.Mix.Active)
 	}
 	return o, nil
 }

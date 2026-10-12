@@ -89,10 +89,15 @@ type InventoryFilter struct {
 	UnusedDaysMin  int      `json:"unusedDaysMin"`  // no usage for at least N days
 	ExpiresInDays  int      `json:"expiresInDays"`  // expires within N days (>0)
 	AssignedBefore string   `json:"assignedBefore"` // YYYY-MM-DD
+	AccountType    string   `json:"accountType"`    // "" | internal | external
+	// DirectoryCheck: CHANGED (directory data changed), INELIGIBLE (no longer
+	// eligible), ERROR (last check failed), UNCHECKED (never checked).
+	DirectoryCheck []string `json:"directoryCheck"`
 }
 
-// where builds the SQL predicate and arguments of a filter.
-func (f InventoryFilter) where(now time.Time) (string, []any) {
+// where builds the SQL predicate and arguments of a filter. externalSuffix
+// is the local-part suffix identifying external accounts (".ext").
+func (f InventoryFilter) where(now time.Time, externalSuffix string) (string, []any) {
 	conds := []string{"ended_at IS NULL"}
 	var args []any
 	add := func(cond string, v any) {
@@ -120,12 +125,34 @@ func (f InventoryFilter) where(now time.Time) (string, []any) {
 	if t, err := time.Parse("2006-01-02", f.AssignedBefore); err == nil {
 		add("assigned_at < ?", t)
 	}
+	switch suffix := strings.ToLower(externalSuffix); {
+	case suffix != "" && f.AccountType == "external":
+		add("right(split_part(user_email, '@', 1), length(?::text)) = ?", suffix) // same $n twice
+	case suffix != "" && f.AccountType == "internal":
+		add("right(split_part(user_email, '@', 1), length(?::text)) <> ?", suffix)
+	}
+	var checks []string
+	for _, c := range f.DirectoryCheck {
+		switch c {
+		case "CHANGED":
+			checks = append(checks, "cardinality(drift_fields) > 0")
+		case "INELIGIBLE":
+			checks = append(checks, "ineligible_reason IS NOT NULL")
+		case "ERROR":
+			checks = append(checks, "dir_check_result = 'ERROR'")
+		case "UNCHECKED":
+			checks = append(checks, "dir_checked_at IS NULL")
+		}
+	}
+	if len(checks) > 0 {
+		conds = append(conds, "("+strings.Join(checks, " OR ")+")")
+	}
 	return strings.Join(conds, " AND "), args
 }
 
 // Inventory returns the active assignments matching a filter.
-func (q Q) Inventory(ctx context.Context, f InventoryFilter, now time.Time, limit int) ([]Assignment, int, error) {
-	where, args := f.where(now)
+func (q Q) Inventory(ctx context.Context, f InventoryFilter, externalSuffix string, now time.Time, limit int) ([]Assignment, int, error) {
+	where, args := f.where(now, externalSuffix)
 	total, err := scalar[int](ctx, q.db, `SELECT count(*) FROM license_assignments WHERE `+where, args...)
 	if err != nil {
 		return nil, 0, err
@@ -136,8 +163,8 @@ func (q Q) Inventory(ctx context.Context, f InventoryFilter, now time.Time, limi
 }
 
 // InventoryEmails returns every e-mail matching a filter (mass removal).
-func (q Q) InventoryEmails(ctx context.Context, f InventoryFilter, now time.Time) ([]string, error) {
-	where, args := f.where(now)
+func (q Q) InventoryEmails(ctx context.Context, f InventoryFilter, externalSuffix string, now time.Time) ([]string, error) {
+	where, args := f.where(now, externalSuffix)
 	rows, err := q.db.Query(ctx, `SELECT user_email FROM license_assignments WHERE `+where+` ORDER BY user_email`, args...)
 	if err != nil {
 		return nil, err

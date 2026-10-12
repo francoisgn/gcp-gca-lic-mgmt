@@ -36,7 +36,8 @@ type FulfilResult struct {
 	BufferStage    domain.BufferStage `json:"bufferStage,omitempty"`
 	EmailSent      bool               `json:"emailSent"`
 
-	newlyQueued bool // first time in the waiting list (triggers the e-mail)
+	newlyQueued   bool // first time in the waiting list (triggers the e-mail)
+	newlyBuffered bool // first time in the buffer (triggers the e-mail)
 }
 
 // poolCheckTimeout bounds the Google call made inside the pool critical section.
@@ -48,7 +49,7 @@ func (s *Service) fulfil(ctx context.Context, req *store.Request, src domain.Ass
 	if err != nil {
 		return nil, err
 	}
-	s.notifyOutcome(ctx, req, res)
+	s.notifyOutcome(ctx, req, res, false)
 	return res, nil
 }
 
@@ -211,6 +212,7 @@ func (s *Service) toBuffer(ctx context.Context, req *store.Request, stage domain
 	defer cancel()
 	now := s.Now()
 	retry := req.Status == domain.ReqBuffered
+	newly := req.BufferedAt == nil
 	var buf *store.BufferEntry
 	abandoned := false
 	err := s.DB.Tx(wctx, func(q store.Q) error {
@@ -248,7 +250,7 @@ func (s *Service) toBuffer(ctx context.Context, req *store.Request, stage domain
 	}
 	total, _ := s.DB.BufferDepth(wctx)
 	return &FulfilResult{
-		Outcome: OutcomeBuffered, RequestID: req.ID, BufferPosition: buf.Position, BufferTotal: total, BufferStage: stage,
+		Outcome: OutcomeBuffered, RequestID: req.ID, BufferPosition: buf.Position, BufferTotal: total, BufferStage: stage, newlyBuffered: newly,
 		Steps:   s.stepsFor(req, buf),
 		Message: fmt.Sprintf("Google did not answer in time. Your request is saved with priority and retried automatically every %d minutes: come back in about 10 minutes.", int(s.Cfg.BufferRetryEvery.Minutes())),
 	}, nil
