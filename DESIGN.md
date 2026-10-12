@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Version | **1.0.0** |
+| Version | **1.1.0** |
 | Theme | Dark only (v1) |
 | UI language | English only |
 | Inspirations | Google design language (calm, airy, negative space, accent colours used sparingly) · [Catppuccin](https://catppuccin.com) Mocha palette and isometric illustration · Gemini gradient (Gemini CLI wordmark) · 2026 trends: soft gradients, glassy top bar, pill shapes, generous radii |
@@ -150,7 +150,9 @@ Scale: `12 · 13 · 15 (base) · 18 · 24 · 32 · 44` px (`--fs-xs` … `--fs-3
 | Tables | `.table-wrap > table` | Uppercase 12 px headers, 11/14 px cells, hover row, secondary info in `.sub` muted line. |
 | Tabs | `.tab[aria-selected]` | Text tabs with a gradient underline. |
 | KPI tile | `.kpi--{ok,warn,ko}` | Uppercase label, Lato 900 30 px value coloured by status. |
-| Dialog / toast | `dialog`, `.toast--{ok,warn,ko}` | Native `<dialog>`; toasts bottom-right, coloured left border. |
+| Dialog / toast | `dialog`, `.toast--{ok,warn,ko}` | Native `<dialog>`; toasts bottom-right, coloured left border. `.dialog-pre` shows preformatted text (e-mail preview): mono 12 px on surface, scrolls beyond 60 vh. |
+| Split layout | `.split`, `.split--aside` | Two cards side by side, one column under 860 px. `--aside` = 2 : 3 (form on the left, table on the right). |
+| Directory check badge | `.badge--{ok,warn,ko,plain}` | Inventory *Directory* column: *ok* (green), *changed* / *check failed* (orange), *not eligible* (red), *not checked* (plain). Details in the tooltip. External accounts: `.badge--accent` *external* under the e-mail. |
 
 ---
 
@@ -206,4 +208,5 @@ Scale: `12 · 13 · 15 (base) · 18 · 24 · 32 · 44` px (`--fs-xs` … `--fs-3
 
 | Version | Date | Change |
 |---|---|---|
+| 1.1.0 | 2026-10-12 | `.dialog-pre` (e-mail preview), `.split--aside` (GPS codes tab), directory check badges and *external* badge in the inventory, second row of KPI tiles (external ratio, directory drift). No token change. |
 | 1.0.0 | 2026-10-12 | Initial design language: Catppuccin Mocha dark theme, Gemini gradient accents, Roboto / Open Sans / Lato typography, isometric hero illustration, progressive form, RAG statuses, chart palette. |
