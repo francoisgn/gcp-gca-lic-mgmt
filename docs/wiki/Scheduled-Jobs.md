@@ -4,9 +4,9 @@ Cloud Scheduler calls `POST https://gcalm-worker-…run.app/jobs/{name}` with an
 
 | Job | Schedule (time zone `TIMEZONE`) | What it does |
 |---|---|---|
-| `buffer-retry` | `*/7 * * * *` | Retries each pending buffer entry from its stage (directory → credentials → license); re-sends failed confirmation e-mails; abandons an entry after 30 attempts. |
+| `buffer-retry` | `*/7 * * * *` | Retries each pending buffer entry from its stage (credentials → license — Google timeouts only, a directory outage is never buffered); re-sends failed confirmation e-mails; abandons an entry after 30 attempts. |
 | `queue` | `3-59/7 * * * *` | Serves the waiting list while seats are available (max 50 per run). Also triggered immediately after any release of seats (admin removal, purge, deviation fix). |
-| `subscription-refresh` | `0 */3 * * *` | Lists the orders, updates the subscriptions, **migrates licenses when the current subscription becomes inactive and a new one is active**, reconciles with Google (deviations, last usage), stores daily seat counters. Super admins can run it from the UI (*Force subscription refresh*). |
+| `subscription-refresh` | `0 */3 * * *` | Lists the orders, updates the subscriptions, **switches to the newest active subscription and migrates the licenses** (most recent users first when the new pool is smaller; the others are queued with priority and told their position), reconciles with Google (deviations, last usage), **reconciles the IAM bundle group with the licenses** (removes roles left without a license, restores missing ones), stores daily seat counters. Super admins can run it from the UI (*Force subscription refresh*). |
 | `purge` | `15 * * * *` | Removes expired licenses and licenses unused for 7 days, e-mails the users, serves the queue. |
 | `directory-recheck` | `30 2 * * *` | Monthly re-check of active licenses against the enterprise directory (see below). |
 | `housekeeping` | `30 3 * * *` | Deletes technical KPIs older than 10 days, job history older than 30 days and the e-mail journal older than 90 days. |

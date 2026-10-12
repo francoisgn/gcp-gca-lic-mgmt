@@ -251,11 +251,22 @@ func (f *FakeLicensing) Unassign(ctx context.Context, order string, emails []str
 // Rollover ends the current subscription now and creates a new one with the
 // given number of seats, to exercise the migration logic.
 func (f *FakeLicensing) Rollover(seats int) (string, error) {
+	return f.newOrder(seats, true)
+}
+
+// AddSubscription adds a newer subscription WITHOUT ending the current one:
+// Google may keep showing the previous order active, the portal must still
+// switch to the newest one.
+func (f *FakeLicensing) AddSubscription(seats int) (string, error) {
+	return f.newOrder(seats, false)
+}
+
+func (f *FakeLicensing) newOrder(seats int, endPrevious bool) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	now := time.Now().UTC().Truncate(time.Second)
 	for _, o := range f.st.Orders {
-		if o.activeAt(now) {
+		if endPrevious && o.activeAt(now) {
 			o.End = now
 		}
 	}

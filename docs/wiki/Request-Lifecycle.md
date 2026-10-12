@@ -6,7 +6,7 @@
 stateDiagram-v2
   [*] --> DRAFT: directory check
   DRAFT --> DIRECTORY_KO: functional KO
-  DRAFT --> BUFFERED: directory timeout
+  DRAFT --> DRAFT: directory unavailable (stop, try again)
   DIRECTORY_KO --> PENDING_ADMIN: escalate
   DIRECTORY_KO --> ABANDONED: withdraw
   PENDING_ADMIN --> REJECTED: admin rejects
@@ -19,7 +19,6 @@ stateDiagram-v2
   QUEUED --> ABANDONED: user leaves / admin removes
   BUFFERED --> ASSIGNED: retry OK
   BUFFERED --> QUEUED: retry, pool exhausted
-  BUFFERED --> DIRECTORY_KO: retry, functional KO
   BUFFERED --> FAILED: 30 attempts / permanent error
   DRAFT --> FAILED: permanent error
   ASSIGNED --> [*]
@@ -29,6 +28,8 @@ stateDiagram-v2
 ```
 
 Open states (`DRAFT`, `DIRECTORY_KO`, `PENDING_ADMIN`, `QUEUED`, `BUFFERED`): **at most one per user** (partial unique index).
+
+**Directory unavailable** (timeout, 5xx, network): the process **stops** — no buffer, no seat reserved, nothing sent to Google. The user sees *"Enterprise directory unavailable"* and tries again later (the draft is kept). Every failed call is recorded for the technical KPIs (*Enterprise directory — load & availability*). Only Google timeouts (steps 7 and 8) go to the buffer.
 
 ## Fulfilment pipeline
 
@@ -73,4 +74,4 @@ available for a new request = Google availableLicenseCount
 | `EXPIRED` | purge job — requested duration elapsed |
 | `ADMIN_REMOVAL` | admin removal, mass removal, transfer (source) |
 | `EXTERNAL_REMOVAL` | DB_ONLY deviation closed (license removed outside the portal) |
-| `SUBSCRIPTION_ENDED` | rollover — no seat in the new pool (user re-queued with priority 10) |
+| `SUBSCRIPTION_ENDED` | renewal — not kept in the new, smaller pool (most recent users are kept first); user re-queued with priority 10 and told their position by e-mail |

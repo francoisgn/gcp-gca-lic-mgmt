@@ -9,6 +9,7 @@
 
 **Integrations**
 - [[Google APIs and Permissions]]
+- [[Authorizing the Portal]]
 - [[Enterprise Directory]]
 
 **Operate**

@@ -51,7 +51,7 @@ func TestHomeStates(t *testing.T) {
 		"noah.wilson@example.com":  "you are in the waiting list",
 		"mia.ko@example.com":       "Waiting for an administrator",
 		"liam.ko@example.com":      "Your last request was rejected",
-		"sofia.edslow@example.com": "being processed with priority",
+		"sofia.slow@example.com":   "being processed with priority",
 		"jane.doe@example.com":     "Pool exhausted",
 		"paul.new@example.com":     "Request a license",
 	}

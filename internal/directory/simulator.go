@@ -20,7 +20,7 @@ import (
 //	"nogps"   -> empty GPS code                (functional KO)
 //	"badgps"  -> GPS code outside the pool     (functional KO: not in the allowlist)
 //	"ghost"   -> unknown account, HTTP 404     (functional KO)
-//	"edslow"  -> hangs until the caller's timeout (technical KO -> buffer)
+//	"edslow"  -> hangs until the caller's timeout (technical KO: "directory unavailable")
 //	"ederr"   -> HTTP 503                      (technical KO -> buffer)
 //
 // On top of that, FailureRate randomly returns HTTP 503 / 500 / timeouts to

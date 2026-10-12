@@ -109,7 +109,7 @@ func (r EndReason) Label() string {
 	case EndExternalRemoval:
 		return "Removed outside the portal"
 	case EndSubscriptionEnded:
-		return "Subscription ended"
+		return "Not kept at renewal"
 	case EndUserRelease:
 		return "Released by user"
 	}

@@ -290,17 +290,17 @@ func (s *Service) SeedDemo(ctx context.Context) error {
 		}
 	}
 
-	// --- Buffer: one pending (directory timeout) + history ------------------------------
-	r, err := newRequest("sofia.edslow@example.com", ago(0.02), domain.ReqBuffered, "1M")
+	// --- Buffer: one pending (Google timeout on the license) + history --------------------
+	r, err := newRequest("sofia.slow@example.com", ago(0.02), domain.ReqBuffered, "1M")
 	if err != nil {
 		return err
 	}
-	tech := domain.DirTechnicalKO
-	r.DirOutcome, r.DirReason, r.BufferedAt = &tech, ptr("The enterprise directory did not answer in time."), ptr(ago(0.02))
+	dirOK := domain.DirOK
+	r.DirOutcome, r.BufferedAt, r.CredentialsAt = &dirOK, ptr(ago(0.02)), ptr(ago(0.02))
 	if err := s.DB.UpdateRequest(ctx, r); err != nil {
 		return err
 	}
-	if _, err := s.DB.UpsertBuffer(ctx, r.ID, r.UserEmail, domain.StageDirectory, "context deadline exceeded", false, ago(0.02)); err != nil {
+	if _, err := s.DB.UpsertBuffer(ctx, r.ID, r.UserEmail, domain.StageLicense, "context deadline exceeded", false, ago(0.02)); err != nil {
 		return err
 	}
 	for i := 0; i < 9; i++ {
@@ -311,7 +311,7 @@ func (s *Service) SeedDemo(ctx context.Context) error {
 			return err
 		}
 		if err := exec(`INSERT INTO buffer_entries (request_id, user_email, stage, created_at, attempts, status, resolved_at)
-			VALUES ($1,$2,$3,$4,$5,'DONE',$6)`, pr.ID, email, []string{"LICENSE", "CREDENTIALS", "DIRECTORY"}[i%3],
+			VALUES ($1,$2,$3,$4,$5,'DONE',$6)`, pr.ID, email, []string{"LICENSE", "CREDENTIALS"}[i%2],
 			ago(in), 1+rng.IntN(3), ago(in-0.01-rng.Float64()*0.2)); err != nil {
 			return err
 		}
@@ -361,7 +361,7 @@ func (s *Service) SeedDemo(ctx context.Context) error {
 		{EvAdminEscalation, "alex.martin@example.com", "[GCA portal] New request to review: mia.ko@example.com"},
 		{EvRequestRejected, "liam.ko@example.com", "Your Gemini Code Assist request was rejected"},
 		{EvRemovedUnused, "jane.doe@example.com", "Your Gemini Code Assist license was removed"},
-		{EvBuffered, "sofia.edslow@example.com", "Your Gemini Code Assist request is delayed"},
+		{EvBuffered, "sofia.slow@example.com", "Your Gemini Code Assist request is delayed"},
 	} {
 		if err := s.DB.InsertNotification(ctx, store.Notification{Event: n.event, Recipient: n.to, Subject: n.subject,
 			BodyText: "(demo data)", Status: "SENT"}); err != nil {
@@ -396,6 +396,7 @@ func (s *Service) SeedDemo(ctx context.Context) error {
 	specs := []callSpec{
 		{telemetry.TargetDirectory, "lookup", "UX", 30, 220, map[string]float64{"TIMEOUT": .04, "HTTP_5XX": .05, "NETWORK": .015, "NOT_FOUND": .03, "RATE_LIMITED": .01}, 5000},
 		{telemetry.TargetDirectory, "lookup", "JOB", 6, 260, map[string]float64{"TIMEOUT": .12, "HTTP_5XX": .06}, 5000},
+		{telemetry.TargetDirectory, "lookup", "ADMIN", 1, 240, map[string]float64{"TIMEOUT": .05}, 5000},
 		{telemetry.TargetCredentials, "grant", "UX", 8, 420, map[string]float64{"TIMEOUT": .03}, 10000},
 		{telemetry.TargetCredentials, "grant", "JOB", 3, 380, map[string]float64{"TIMEOUT": .05}, 30000},
 		{telemetry.TargetLicense, "assign", "UX", 8, 1300, map[string]float64{"TIMEOUT": .06, "HTTP_5XX": .02}, 10000},

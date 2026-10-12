@@ -12,14 +12,13 @@ One e-mail per change of step, to the user concerned (and to the administrators 
 | `request_approved` | user | an admin approves **but the license is not active yet** (pool exhausted → queue position, or Google timeout → buffer) | `approved` |
 | `license_assigned` | user | license active = **end of the process** (step 9): dates, VS Code set-up, CLI forbidden, AI training; mentions the approving admin when there was one | `assigned` |
 | `queued` | user | pool exhausted on a normal request — position in the waiting list | `queued` |
-| `buffered` | user | a service timed out — pending step, automatic retry every 7 min | `buffered` |
-| `action_required` | user | directory KO confirmed by a buffered retry — withdraw or escalate | `action_required` |
+| `buffered` | user | a Google service timed out (credentials or license) — pending step, automatic retry every 7 min | `buffered` |
 | `removed_unused` | user | removed after 7 days without usage | `removed` |
 | `removed_expired` | user | requested duration elapsed | `removed` |
 | `removed_admin` | user | removed by an admin (single, mass removal, or source of a transfer) | `removed` |
-| `removed_subscription` | user | no seat in the renewed subscription — back first in the waiting list | `removed` (*requeued* variant) |
+| `removed_subscription` | user | not kept in the new, smaller subscription (seats go to the most recent users) — back in the waiting list with priority, **with their position #x** | `removed` (*requeued* variant) |
 
-Not notified: a license removed outside the portal (Google console) — it is a deviation for the admins, not a user event.
+Not notified: a license removed outside the portal (Google console) — it is a deviation for the admins, not a user event. A directory outage is not notified either: the user sees the message on screen, nothing was sent.
 
 ## Admin approval: one or two e-mails?
 

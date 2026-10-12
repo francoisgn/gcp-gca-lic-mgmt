@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -29,10 +30,21 @@ import (
 // are bound ONCE (Terraform) to a Google group on the Gemini project. Granting
 // credentials = adding the user to the group, revoking = removing them.
 // A single synchronous API call, no IAM policy concurrency.
+//
+// Members lets the subscription refresh reconcile the group with the
+// licenses (a failed revocation, or a member added by hand, is corrected
+// within 3 hours), so the roles never accumulate.
 type Credentials interface {
 	Grant(ctx context.Context, email string) error
 	Revoke(ctx context.Context, email string) error
+	// Members returns the e-mails of the plain members (role MEMBER only).
+	// Owners and managers — the portal service accounts — are never listed.
+	Members(ctx context.Context) ([]string, error)
 }
+
+// ErrMembersUnsupported is returned by Members when the roles are not managed
+// by the portal (CREDENTIALS_MODE=none): there is nothing to reconcile.
+var ErrMembersUnsupported = errors.New("credentials: membership not managed by the portal")
 
 // --- Cloud Identity group -----------------------------------------------------
 
@@ -110,6 +122,36 @@ func (g *GroupCredentials) Revoke(ctx context.Context, email string) error {
 	return err
 }
 
+// Members implements Credentials: direct USER members whose only role is
+// MEMBER (owners, managers, service accounts and nested groups are skipped).
+func (g *GroupCredentials) Members(ctx context.Context) ([]string, error) {
+	parent, err := g.group(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	err = g.svc.Groups.Memberships.List(parent).View("FULL").PageSize(500).Pages(ctx, func(resp *cloudidentity.ListMembershipsResponse) error {
+		for _, m := range resp.Memberships {
+			if m.PreferredMemberKey == nil || (m.Type != "" && m.Type != "USER") || !plainMember(m.Roles) {
+				continue
+			}
+			out = append(out, strings.ToLower(m.PreferredMemberKey.Id))
+		}
+		return nil
+	})
+	return out, err
+}
+
+// plainMember reports whether the membership has no OWNER / MANAGER role.
+func plainMember(roles []*cloudidentity.MembershipRole) bool {
+	for _, r := range roles {
+		if r.Name == "OWNER" || r.Name == "MANAGER" {
+			return false
+		}
+	}
+	return true
+}
+
 // --- No-op (roles granted another way, e.g. to the whole domain) ------------
 
 // NoCredentials is used when the IAM roles are granted outside the portal.
@@ -118,14 +160,18 @@ type NoCredentials struct{}
 func (NoCredentials) Grant(context.Context, string) error  { return nil }
 func (NoCredentials) Revoke(context.Context, string) error { return nil }
 
+// Members implements Credentials.
+func (NoCredentials) Members(context.Context) ([]string, error) { return nil, ErrMembersUnsupported }
+
 // --- Fake --------------------------------------------------------------------
 
-// FakeCredentials simulates the group API: random latency, and the FIRST
-// grant of an e-mail with the "iamslow" marker hangs (buffer demo).
+// FakeCredentials simulates the group API (in memory): random latency, and
+// the FIRST grant of an e-mail with the "iamslow" marker hangs (buffer demo).
 type FakeCredentials struct {
 	MaxLatency time.Duration
 	mu         sync.Mutex
 	attempts   map[string]int
+	members    map[string]bool
 }
 
 // Grant implements Credentials.
@@ -137,12 +183,44 @@ func (f *FakeCredentials) Grant(ctx context.Context, email string) error {
 	f.attempts[email]++
 	hang := hasMarker(email, "iamslow") && f.attempts[email] == 1
 	f.mu.Unlock()
-	return fakeWait(ctx, f.MaxLatency, hang)
+	if err := fakeWait(ctx, f.MaxLatency, hang); err != nil {
+		return err
+	}
+	f.AddMember(email)
+	return nil
 }
 
 // Revoke implements Credentials.
-func (f *FakeCredentials) Revoke(ctx context.Context, _ string) error {
-	return fakeWait(ctx, f.MaxLatency, false)
+func (f *FakeCredentials) Revoke(ctx context.Context, email string) error {
+	if err := fakeWait(ctx, f.MaxLatency, false); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	delete(f.members, email)
+	f.mu.Unlock()
+	return nil
+}
+
+// Members implements Credentials.
+func (f *FakeCredentials) Members(context.Context) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.members))
+	for e := range f.members {
+		out = append(out, e)
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+// AddMember adds a member directly (tests: someone added by hand in the console).
+func (f *FakeCredentials) AddMember(email string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.members == nil {
+		f.members = map[string]bool{}
+	}
+	f.members[email] = true
 }
 
 func fakeWait(ctx context.Context, max time.Duration, hang bool) error {
@@ -183,4 +261,17 @@ func (i *instrumentedCredentials) Revoke(ctx context.Context, email string) erro
 	return i.rec.Observe(ctx, telemetry.TargetCredentials, "revoke", func(ctx context.Context) error {
 		return i.next.Revoke(ctx, email)
 	})
+}
+
+func (i *instrumentedCredentials) Members(ctx context.Context) ([]string, error) {
+	if _, ok := i.next.(NoCredentials); ok {
+		return nil, ErrMembersUnsupported // nothing called, nothing to record
+	}
+	var out []string
+	err := i.rec.Observe(ctx, telemetry.TargetCredentials, "members", func(ctx context.Context) error {
+		var err error
+		out, err = i.next.Members(ctx)
+		return err
+	})
+	return out, err
 }

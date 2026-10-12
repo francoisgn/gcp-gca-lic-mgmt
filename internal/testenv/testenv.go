@@ -57,6 +57,7 @@ type Env struct {
 	DB     *store.DB
 	Svc    *service.Service
 	Fake   *gcp.FakeLicensing
+	Creds  *gcp.FakeCredentials // IAM bundle group (in memory)
 	Mails  *CaptureMailer
 	Clock  *Clock
 	Roles  *roles.Roles
@@ -118,10 +119,11 @@ func New(t *testing.T, seats int, opts ...Option) *Env {
 	rec := telemetry.NewRecorder(db.Q)
 	clock := &Clock{}
 	mails := &CaptureMailer{}
+	creds := &gcp.FakeCredentials{}
 	svc := service.New(service.Deps{
 		Cfg: cfg, DB: db, Roles: rl, Policy: pol, Recorder: rec, Fake: fake,
 		Licensing:   gcp.InstrumentLicensing(fake, rec),
-		Credentials: gcp.InstrumentCredentials(&gcp.FakeCredentials{}, rec),
+		Credentials: gcp.InstrumentCredentials(creds, rec),
 		Directory:   directory.Instrument(&directory.Simulator{}, rec),
 		Mailer:      mails, Mails: renderer, Tracker: tracker.Log{},
 		Now: clock.Now,
@@ -133,7 +135,7 @@ func New(t *testing.T, seats int, opts ...Option) *Env {
 	if _, err := db.AddGPSCodes(ctx, directory.SimulatorGPSCodes, "test", "super.admin@example.com"); err != nil {
 		t.Fatalf("gps allowlist: %v", err)
 	}
-	return &Env{Cfg: cfg, DB: db, Svc: svc, Fake: fake, Mails: mails, Clock: clock, Roles: rl, Policy: pol}
+	return &Env{Cfg: cfg, DB: db, Svc: svc, Fake: fake, Creds: creds, Mails: mails, Clock: clock, Roles: rl, Policy: pol}
 }
 
 // User returns the identity of an e-mail with its role.
@@ -212,4 +214,17 @@ func (m *CaptureMailer) Count(to, subject string) int {
 		}
 	}
 	return n
+}
+
+// To returns the messages sent to an address, in sending order.
+func (m *CaptureMailer) To(to string) []mail.Message {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []mail.Message
+	for _, msg := range m.Msgs {
+		if msg.To == to {
+			out = append(out, msg)
+		}
+	}
+	return out
 }

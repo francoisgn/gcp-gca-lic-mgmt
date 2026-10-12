@@ -8,7 +8,7 @@ Infrastructure as code: `deploy/terraform` (providers google / google-beta 8.x, 
 |---|---|---|
 | 1 | Project for the portal; project for Gemini (`gca_project_id`, can be the same) | platform |
 | 2 | Gemini Code Assist subscription purchased; license pool in **manual** assignment mode | licensing owner |
-| 3 | Rights to apply: Owner on the project, `roles/iam.organizationRoleAdmin` (custom role), Billing Account Administrator (IAM on the billing account) | platform |
+| 3 | Rights to apply: Owner on the project, `roles/iam.organizationRoleAdmin` (custom role), Billing Account Administrator (IAM on the billing account) — what the portal receives and why: [[Authorizing the Portal]] | platform |
 | 4 | IAM bundle group: either let Terraform create it (`create_gca_users_group = true`, `customer_id`) or create it in the Admin console and add the two portal service accounts as **managers** | Workspace admin |
 | 5 | SMTP relay allowing the portal sender; GitLab (or Jira) technical account and token | Workspace admin / tooling |
 | 6 | Enterprise directory endpoint, contract and API key | directory owner |

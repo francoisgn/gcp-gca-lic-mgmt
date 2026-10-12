@@ -194,7 +194,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // W) directory validation
+  // 5) directory validation
   // ---------------------------------------------------------------------------
   async function checkDirectory() {
     const box = document.getElementById('directory-result');
@@ -236,11 +236,12 @@
           el('button', { class: 'btn btn--primary', type: 'button', onclick: () => openEscalation(qa('escalation'), res.requestId) }, 'Escalate to an administrator'),
           el('button', { class: 'btn btn--ghost', type: 'button', onclick: () => withdraw(res.requestId) }, 'Withdraw my request')));
     } else {
-      // Technical KO: the request is in the buffer, retried by a job.
-      document.getElementById('directory-actions').hidden = true;
-      box.append(alertBox('warn', 'The enterprise directory did not answer in time',
-        el('p', {}, `Your request is saved in the priority buffer (position #${res.bufferPosition} of ${res.bufferTotal}) and retried automatically every 7 minutes. Come back in about 10 minutes.`),
-        el('a', { class: 'btn btn--sm btn--secondary', href: '/' }, 'Refresh')));
+      // Technical KO: the directory is unavailable and the process stops here.
+      // Nothing was sent: the answers stay editable and the button stays
+      // available to try again.
+      ['identity', 'training', 'duration', 'details'].forEach((n) => qa(n).classList.remove('form-readonly'));
+      box.append(alertBox('warn', 'Enterprise directory unavailable', el('p', {}, res.reason),
+        el('p', { class: 'text-muted' }, 'Use the button below to try again.')));
     }
   }
 
@@ -254,7 +255,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // W1) escalation (form flow and "directory KO" card share the same markup)
+  // 6) escalation (form flow and "directory KO" card share the same markup)
   // ---------------------------------------------------------------------------
   function openEscalation(container, requestId) {
     if (container) container.hidden = false;

@@ -20,9 +20,12 @@ import (
 //
 //  1. list the Gemini Code Assist orders of the billing account;
 //  2. upsert them (state, dates, seats);
-//  3. if the current subscription became inactive and a new active one
-//     exists, migrate every active license to the new pool;
-//  4. reconcile the current pool with the database (deviations, last usage);
+//  3. switch to the newest active subscription: each new subscription makes
+//     the previous one inoperative (even if Google still shows it active), so
+//     as soon as a more recent one appears — or the current one becomes
+//     inactive — every active license is migrated to the new pool;
+//  4. reconcile the current pool with the database (deviations, last usage)
+//     and the IAM bundle group with the licenses;
 //  5. store the daily seat counters and serve the queue.
 func (s *Service) RefreshSubscriptions(ctx context.Context) (string, error) {
 	now := s.Now()
@@ -67,16 +70,16 @@ func (s *Service) RefreshSubscriptions(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	// Rollover: the current subscription is gone, pick the best active one
-	// (latest start, then largest pool).
-	if current == nil || current.State != "ACTIVE" {
-		sort.SliceStable(candidates, func(i, j int) bool {
-			si, sj := candidates[i].StartTime, candidates[j].StartTime
-			if si != nil && sj != nil && !si.Equal(*sj) {
-				return si.After(*sj)
-			}
-			return candidates[i].SeatsTotal > candidates[j].SeatsTotal
-		})
+	// Rollover: pick the best active subscription (latest start, then largest
+	// pool) and switch when the current one is gone or a newer one appeared.
+	sort.SliceStable(candidates, func(i, j int) bool {
+		si, sj := candidates[i].StartTime, candidates[j].StartTime
+		if si != nil && sj != nil && !si.Equal(*sj) {
+			return si.After(*sj)
+		}
+		return candidates[i].SeatsTotal > candidates[j].SeatsTotal
+	})
+	if current == nil || current.State != "ACTIVE" || (len(candidates) > 0 && newer(&candidates[0], current)) {
 		if len(candidates) > 0 {
 			next := candidates[0]
 			prev := ""
@@ -111,11 +114,17 @@ func (s *Service) RefreshSubscriptions(ctx context.Context) (string, error) {
 	return summary, nil
 }
 
-// migrate moves the active licenses of a subscription that became inactive
-// to the new one. Users that do not fit in the new pool lose their seat and
-// are queued with the highest priority. Idempotent: a partial failure is
-// completed by the next refresh (the old subscription stays current until
-// the switch succeeds).
+// newer reports whether subscription a started after b (a different order).
+func newer(a, b *store.Subscription) bool {
+	return a.ID != b.ID && a.StartTime != nil && (b.StartTime == nil || a.StartTime.After(*b.StartTime))
+}
+
+// migrate moves the active licenses of the previous subscription to the new
+// one. When the new pool is smaller, the most recent users keep their seat
+// (order of last usage, never-used licenses last); the others lose it, are
+// queued with the highest priority and receive an e-mail with their position.
+// Idempotent: a partial failure is completed by the next refresh (the old
+// subscription stays current until the switch succeeds).
 func (s *Service) migrate(ctx context.Context, from, to *store.Subscription) (moved, queued int, err error) {
 	var requeued []store.Assignment
 	defer func() { s.notifyRemoved(ctx, requeued, domain.EndSubscriptionEnded) }()
@@ -124,6 +133,30 @@ func (s *Service) migrate(ctx context.Context, from, to *store.Subscription) (mo
 		if err != nil {
 			return err
 		}
+		// Freshest usage known: database or Google (best effort on the old pool).
+		usage := map[string]time.Time{}
+		if users, err := s.Licensing.Enumerate(ctx, from.ID); err == nil {
+			for _, u := range users {
+				if u.RecentUsage != nil {
+					usage[u.Email] = *u.RecentUsage
+				}
+			}
+		}
+		for _, a := range active {
+			if a.LastUsageAt != nil && a.LastUsageAt.After(usage[a.UserEmail]) {
+				usage[a.UserEmail] = *a.LastUsageAt
+			}
+		}
+		sort.SliceStable(active, func(i, j int) bool {
+			ui, uj := usage[active[i].UserEmail], usage[active[j].UserEmail]
+			if ui.IsZero() != uj.IsZero() {
+				return !ui.IsZero() // used before never used
+			}
+			if !ui.Equal(uj) {
+				return ui.After(uj) // most recent usage first
+			}
+			return active[i].AssignedAt.After(active[j].AssignedAt) // never used: newest first
+		})
 		pool, err := s.Licensing.GetPool(ctx, to.ID)
 		if err != nil {
 			return err
@@ -140,7 +173,7 @@ func (s *Service) migrate(ctx context.Context, from, to *store.Subscription) (mo
 		var toAssign []store.Assignment
 		var keep []store.Assignment
 		var overflow []store.Assignment
-		for _, a := range active { // oldest first
+		for _, a := range active { // most recent usage first
 			switch {
 			case already[a.UserEmail]:
 				keep = append(keep, a)
@@ -283,8 +316,78 @@ func (s *Service) reconcile(ctx context.Context, cur *store.Subscription) (strin
 		if err := s.DB.UpsertSeatStats(ctx, observedAt.In(s.Cfg.TimeZone), pool.Total, pool.Assigned()); err != nil {
 			return err
 		}
-		summary = fmt.Sprintf("google=%d db=%d google_only=%d db_only=%d self_healed=%d", len(google), len(db), googleOnly, dbOnly, healed)
+		summary = fmt.Sprintf("google=%d db=%d google_only=%d db_only=%d self_healed=%d %s", len(google), len(db), googleOnly, dbOnly, healed,
+			s.reconcileCredentials(ctx, google, db, inBuffer))
 		return nil
 	}()
 	return summary, err
+}
+
+// maxIAMChanges bounds the group changes of one reconciliation; the rest is
+// done by the next refresh (3 hours later).
+const maxIAMChanges = 200
+
+// reconcileCredentials aligns the IAM bundle group with the licenses, so the
+// Gemini roles never accumulate:
+//
+//   - a member with no license — not active in the portal, not assigned in
+//     Google, not in flight (seat reserved / buffered) — loses the roles
+//     (failed revocation, member added by hand in the console...);
+//   - a user licensed both in the portal and in Google but missing from the
+//     group gets the roles back.
+//
+// Google is part of the reference, so a database problem can never trigger a
+// mass revocation. Owners and managers of the group are never listed, hence
+// never touched. Best effort: failures are visible in the technical KPIs and
+// in the job summary, they never fail the refresh.
+func (s *Service) reconcileCredentials(ctx context.Context, google map[string]gcp.LicensedUser, db map[string]store.Assignment, inFlight map[string]bool) string {
+	members, err := s.Credentials.Members(ctx)
+	if errors.Is(err, gcp.ErrMembersUnsupported) {
+		return "iam=unmanaged"
+	}
+	if err != nil {
+		slog.Error("list IAM bundle members", "err", err)
+		return "iam=error"
+	}
+	isMember := make(map[string]bool, len(members))
+	var revoke, grant []string
+	for _, m := range members {
+		isMember[m] = true
+		_, inDB := db[m]
+		_, inGoogle := google[m]
+		if !inDB && !inGoogle && !inFlight[m] {
+			revoke = append(revoke, m)
+		}
+	}
+	for email := range db {
+		if _, inGoogle := google[email]; inGoogle && !isMember[email] {
+			grant = append(grant, email)
+		}
+	}
+	slices.Sort(revoke)
+	slices.Sort(grant)
+	revoke, grant = revoke[:min(len(revoke), maxIAMChanges)], grant[:min(len(grant), maxIAMChanges)]
+
+	call := func(f func(context.Context, string) error, email string) bool {
+		cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		return f(cctx, email) == nil
+	}
+	var revoked, granted []string
+	for _, e := range revoke {
+		if call(s.Credentials.Revoke, e) {
+			revoked = append(revoked, e)
+		}
+	}
+	for _, e := range grant {
+		if call(s.Credentials.Grant, e) {
+			granted = append(granted, e)
+		}
+	}
+	if len(revoked)+len(granted) > 0 {
+		_ = s.DB.Audit(ctx, "system", "credentials.reconcile", "IAM bundle group",
+			map[string]any{"revoked": revoked, "granted": granted})
+		slog.Info("IAM bundle reconciled", "revoked", len(revoked), "granted", len(granted))
+	}
+	return fmt.Sprintf("iam_members=%d iam_revoked=%d iam_granted=%d", len(members), len(revoked), len(granted))
 }

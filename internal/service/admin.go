@@ -437,6 +437,7 @@ func (s *Service) ResolveDeviation(ctx context.Context, admin string, id int64, 
 			if _, err := s.DB.EndActiveAssignmentsByEmail(actx, []string{d.UserEmail}, domain.EndExternalRemoval, admin, now); err != nil {
 				return err
 			}
+			_ = s.Credentials.Revoke(actx, d.UserEmail) // no license left in Google: no roles either
 		case d.Kind == domain.DeviationDBOnly && action == DevActionReassign:
 			res = domain.ResolveReassign
 			if err := s.Licensing.Assign(actx, d.SubscriptionID, []string{d.UserEmail}); err != nil {

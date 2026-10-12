@@ -56,13 +56,13 @@ var devUsers = []DevUser{
 	{"noah.wilson@example.com", "User — in the waiting list"},
 	{"mia.ko@example.com", "User — pending admin validation"},
 	{"liam.ko@example.com", "User — rejected twice"},
-	{"sofia.edslow@example.com", "User — in the buffer (directory timeout)"},
+	{"sofia.slow@example.com", "User — in the buffer (Google timeout)"},
 	{"john.ko@example.com", "User — directory KO (account)"},
 	{"emma.nogps@example.com", "User — directory KO (no GPS code)"},
 	{"tom.badgps@example.com", "User — GPS code not authorized"},
 	{"marc.dupont.ext@example.com", "External — never auto-approved"},
 	{"lisa.martin.ext@example.com", "External — pending admin validation"},
-	{"lucas.edslow@example.com", "User — directory timeout"},
+	{"lucas.edslow@example.com", "User — directory unavailable (timeout)"},
 	{"nina.slow@example.com", "User — Google license timeout (1st try)"},
 }
 
