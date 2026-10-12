@@ -6,21 +6,21 @@ UI language: **English only**. Every page shows the top bar: logo, navigation (*
 
 ![Request form](images/landing-request.png)
 
-Layout: **left panel = progress** (steps A → Z), **centre = subscription**. The user is identified by Google SSO (IAP).
+Layout: **left panel = progress** (steps 1 → 9), **centre = subscription**. The form sections carry the same numbers as the progress panel. The user is identified by Google SSO (IAP).
 
 ### Progress steps
 
-| # | Step | Turns green when | Other states |
-|---|---|---|---|
-| A | Identity | "This is me" clicked (e-mail from SSO) | — |
-| B | Gemini Code Assist training | "Yes, I completed it" | 🔴 "Not yet" → link to the training, process blocked |
-| C | Duration | 7 days · 1 month · 3 months · 6 months · 1 year | — |
-| D | Usage details | every question valid (questions from `policy.yaml`, each answer unlocks the next) | — |
-| W | Directory validation | account OK + eligible GPS code | 🔴 functional KO · 🟠 directory timeout (buffer) |
-| W1 | Admin validation | approved | ⚪ grey when not needed · 🔵 waiting · 🔴 rejected |
-| X | Cloud credentials | IAM bundle granted | 🟠 timeout → buffer |
-| Y | License assignment | license assigned in Google | 🔵 waiting list · 🟠 timeout → buffer |
-| Z | Confirmation e-mail | e-mail sent | 🟠 will be retried |
+| # | Spec ref | Step | Turns green when | Other states |
+|---|---|---|---|---|
+| 1 | a | Identity | "This is me" clicked (e-mail from SSO) | — |
+| 2 | b | Gemini Code Assist training | "Yes, I completed it" | 🔴 "Not yet" → link to the training, process blocked |
+| 3 | c | Duration | 7 days · 1 month · 3 months · 6 months · 1 year | — |
+| 4 | d | Usage details | every question valid (questions from `policy.yaml`, each answer unlocks the next) | — |
+| 5 | W | Directory validation | account OK + eligible GPS code | 🔴 functional KO · 🟠 directory timeout (buffer) |
+| 6 | W1 | Admin validation | approved | ⚪ grey when not needed · 🔵 waiting · 🔴 rejected |
+| 7 | X | Cloud credentials | IAM bundle granted | 🟠 timeout → buffer |
+| 8 | Y | License assignment | license assigned in Google | 🔵 waiting list · 🟠 timeout → buffer |
+| 9 | Z | Confirmation e-mail | e-mail sent | 🟠 will be retried |
 
 ### States of the centre frame
 
@@ -38,17 +38,17 @@ When the user has no active license, a **Previous licenses** table shows each fo
 
 ### Standard process
 
-1. A → D in the browser (no server call). Server-side validation is repeated on submission.
-2. **W** — `POST /api/request/directory`: the request is stored as a draft and the directory is called (5 s).
+1. Steps 1 → 4 in the browser (no server call). Server-side validation is repeated on submission.
+2. **Step 5** — `POST /api/request/directory`: the request is stored as a draft and the directory is called (5 s).
    - ✅ OK → site, business unit, masked GPS code; the answers are frozen.
-   - 🔴 functional KO (account KO, no / invalid GPS code, GPS code not in the allowlist, unknown account, **external account**) → *Withdraw* or *Escalate*. Escalation (**W1**) asks for division, entity, project and an optional comment, then lists the admins to contact.
+   - 🔴 functional KO (account KO, no / invalid GPS code, GPS code not in the allowlist, unknown account, **external account**) → *Withdraw* or *Escalate*. Escalation (**step 6**) asks for division, entity, project and an optional comment, then lists the admins to contact.
    - 🟠 technical KO (timeout, 5xx, network) → buffer.
-3. **X Y Z** — `POST /api/request/{id}/submit` with a loading animation; **10 s budget**:
+3. **Steps 7 · 8 · 9** (one form section, badge *7–9*) — `POST /api/request/{id}/submit` with a loading animation; **10 s budget**:
    - seat available → credentials, license, e-mail → 🟢 *Your license is active*;
    - pool exhausted → 🔵 *You are #x in the waiting list* (+ e-mail);
    - Google too slow → 🟠 buffer, *come back in ~10 minutes* (the seat stays reserved).
 
-### Confirmation e-mail (Z)
+### Confirmation e-mail (step 9)
 Request date, assignment date, planned end · how to set up Gemini Code Assist in VS Code (extension, sign-in, project) · **command-line usage forbidden (Gemini CLI or any terminal / agent tool)** · link to the company AI usage training · reminder of the 7-day rule.
 
 ## 2. Automatic rules

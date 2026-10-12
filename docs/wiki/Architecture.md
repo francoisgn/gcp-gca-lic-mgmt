@@ -77,7 +77,7 @@ sequenceDiagram
   participant ED as Enterprise directory
   participant DB as PostgreSQL
   participant G as Google APIs
-  U->>W: POST /api/request/directory (form A–D)
+  U->>W: POST /api/request/directory (form steps 1–4)
   W->>DB: draft request
   W->>ED: GET /v1/accounts?email= (5 s)
   W->>DB: directory result

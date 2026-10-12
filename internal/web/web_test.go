@@ -150,3 +150,21 @@ func TestSecurityHeaders(t *testing.T) {
 		t.Fatal("nosniff missing")
 	}
 }
+
+// Form sections are numbered like the progress panel.
+func TestStepNumbers(t *testing.T) {
+	for _, c := range []struct {
+		ids  []string
+		want string
+	}{
+		{[]string{"identity"}, "1"},
+		{[]string{"directory"}, "5"},
+		{[]string{"admin"}, "6"},
+		{[]string{"credentials", "email"}, "7–9"},
+		{[]string{"unknown"}, ""},
+	} {
+		if got := stepNo(c.ids...); got != c.want {
+			t.Errorf("stepNo(%v) = %q, want %q", c.ids, got, c.want)
+		}
+	}
+}

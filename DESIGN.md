@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| Version | **1.2.0** |
+| Version | **1.2.1** |
 | Theme | Dark only (v1) |
 | UI language | English only |
 | Inspirations | Google design language (calm, airy, negative space, accent colours used sparingly) · [Catppuccin](https://catppuccin.com) Mocha palette · minimalist isometric illustration · Gemini gradient for the brand only (Gemini CLI wordmark) · faded teal → green → lime accents · 2026 trends: soft gradients, glassy top bar, pill shapes, generous radii |
@@ -146,7 +146,7 @@ Scale: `12 · 13 · 15 (base) · 18 · 24 · 32 · 44` px (`--fs-xs` … `--fs-3
 | Badge | `.badge--{ok,warn,ko,info,accent,plain,count}` | Pill with a 7 px dot. `--count` = solid red number (top bar). |
 | Buttons | `.btn--{primary,secondary,ghost,danger,ok,sm}` | Pill, 42 px (32 px small). **One primary per view**: accent gradient with dark text (contrast ≥ 6:1 on every stop). Destructive actions use `--danger` and a confirmation dialog. |
 | Chips | `.chip` (`aria-pressed`) | Radio-like choices and filter chips. Selected = gradient hairline border + check mark. |
-| Progressive form | `fieldset.qa` | Accent-gradient letter badge (A, B, C, D, W, W1, ✓) + title. Sections appear with `reveal` (8 px rise, 480 ms). Done = green tinted outline, failed = red tinted outline. Answers are frozen (`.form-readonly`) once sent to the directory. |
+| Progressive form | `fieldset.qa` | Accent-gradient **number badge, same numbers as the progress panel** (1 … 6; the final section covering credentials, license and e-mail shows *7–9*; width grows with the content, min 28 px) + title. Sections appear with `reveal` (8 px rise, 480 ms). Done = green tinted outline, failed = red tinted outline. Answers are frozen (`.form-readonly`) once sent to the directory. |
 | Loader | `.loader` | Conic accent-gradient ring, rotating step message, 10 s progress bar (= UX timeout). |
 | Position | `.position` | Huge accent-gradient number (`#3 of 12`) for queue and buffer positions. |
 | Tables | `.table-wrap > table` | Uppercase 12 px headers, 11/14 px cells, hover row, secondary info in `.sub` muted line. |
@@ -211,6 +211,7 @@ Scale: `12 · 13 · 15 (base) · 18 · 24 · 32 · 44` px (`--fs-xs` … `--fs-3
 
 | Version | Date | Change |
 |---|---|---|
+| 1.2.1 | 2026-10-12 | Form sections numbered like the progress panel (1 … 9) instead of letters (A, B, C, D, W, W1, ✓); `.qa__letter` gets `min-width` + padding for *7–9*. |
 | 1.2.0 | 2026-10-12 | **Accents move from the Gemini gradient to a faded teal → green → lime gradient** (`--gradient-accent`): primary button, active step, chips, tabs, avatar, pool bar, position numbers, loader, form letters, links, focus ring, charts, e-mail header. The Gemini gradient stays for the brand only (top bar logo, `> GCA` wordmark). Softer critical red `#e78284`; done / failed form letters become tinted outlines; glows reduced. New hero illustration: isometric 1980s desk with a faded black & white poster (replaces the laptop and the Catppuccin paw print). |
 | 1.1.0 | 2026-10-12 | `.dialog-pre` (e-mail preview), `.split--aside` (GPS codes tab), directory check badges and *external* badge in the inventory, second row of KPI tiles (external ratio, directory drift). No token change. |
 | 1.0.0 | 2026-10-12 | Initial design language: Catppuccin Mocha dark theme, Gemini gradient accents, Roboto / Open Sans / Lato typography, isometric hero illustration, progressive form, RAG statuses, chart palette. |
