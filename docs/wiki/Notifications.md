@@ -6,11 +6,11 @@ One e-mail per change of step, to the user concerned (and to the administrators 
 
 | Event (`policy.yaml` key) | Sent to | When | Template |
 |---|---|---|---|
-| `request_escalated` | user | the user escalates a directory KO (W1) — lists the admins to contact | `escalated` |
+| `request_escalated` | user | the user escalates a directory KO (step 6) — lists the admins to contact | `escalated` |
 | `admin_new_escalation` | every **admin** (super admins excluded) | same moment — requester, reason, division / entity / project / comment, *external* tag | `admin_escalation` |
 | `request_rejected` | user | an admin rejects — reason, link to submit a new request | `rejected` |
 | `request_approved` | user | an admin approves **but the license is not active yet** (pool exhausted → queue position, or Google timeout → buffer) | `approved` |
-| `license_assigned` | user | license active = **end of the process** (step Z): dates, VS Code set-up, CLI forbidden, AI training; mentions the approving admin when there was one | `assigned` |
+| `license_assigned` | user | license active = **end of the process** (step 9): dates, VS Code set-up, CLI forbidden, AI training; mentions the approving admin when there was one | `assigned` |
 | `queued` | user | pool exhausted on a normal request — position in the waiting list | `queued` |
 | `buffered` | user | a service timed out — pending step, automatic retry every 7 min | `buffered` |
 | `action_required` | user | directory KO confirmed by a buffered retry — withdraw or escalate | `action_required` |
@@ -35,7 +35,7 @@ Decision: **one e-mail when the license is active right away, two otherwise.**
 
 Every attempt is stored in the `notifications` table — `SENT`, `FAILED` (with the error) or `DISABLED` (event switched off in `policy.yaml`) — with the text version of the e-mail. Visible in **Admin → Notifications** (last 100, *View* opens the text). Kept 90 days (housekeeping job).
 
-Sending is best effort and never blocks a user action. The confirmation e-mail of step Z is the exception: if it fails, the buffer job retries it until it is sent.
+Sending is best effort and never blocks a user action. The confirmation e-mail of step 9 is the exception: if it fails, the buffer job retries it until it is sent.
 
 ## Switching an event off
 

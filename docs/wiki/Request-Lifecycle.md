@@ -35,15 +35,15 @@ Open states (`DRAFT`, `DIRECTORY_KO`, `PENDING_ADMIN`, `QUEUED`, `BUFFERED`): **
 ```
 fulfil(request)
  1. current subscription?            no / inactive ─────────────▶ QUEUED
- 2. already licensed in Google?      yes → skip 3 and Y
+ 2. already licensed in Google?      yes → skip 3 and the assignment (step 8)
  3. reserve a seat  ─ lock(pool) ─ getPool (4 s) ─ available − reserved > 0 ? ─ write reserved_at ─ unlock
         no seat ──────────────────────────────────────────────▶ QUEUED (reservation released)
         lock wait / getPool timeout ──────────────────────────▶ BUFFERED (no seat kept)
- 4. X  credentials: add to IAM bundle group   timeout/5xx ────▶ BUFFERED (seat kept)
- 5. Y  licensePool:assign                     timeout/5xx ────▶ BUFFERED (seat kept)
-                                               4xx ────────────▶ FAILED
+ 4. step 7  credentials: add to IAM bundle group  timeout/5xx ────▶ BUFFERED (seat kept)
+ 5. step 8  licensePool:assign                    timeout/5xx ────▶ BUFFERED (seat kept)
+                                                  4xx ────────────▶ FAILED
  6. persist assignment (expires_at = now + duration), close queue/buffer entries ▶ ASSIGNED
- 7. Z  confirmation e-mail (retried by the buffer job if it fails)
+ 7. step 9  confirmation e-mail (retried by the buffer job if it fails)
 ```
 
 Budgets: **10 s** when a user waits (`UX_TIMEOUT`), 30 s per call in jobs (`JOB_CALL_TIMEOUT`), 5 s for the directory (`DIRECTORY_TIMEOUT`).

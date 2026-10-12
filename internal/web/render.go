@@ -220,6 +220,7 @@ func templateFuncs(loc *time.Location) template.FuncMap {
 			return m
 		},
 		"stepIcon": stepIcon,
+		"stepNo":   stepNo,
 		"icon":     icon,
 	}
 }
@@ -264,6 +265,21 @@ func plural(n int, w string) string {
 		return "1 " + w
 	}
 	return fmt.Sprintf("%d %ss", n, w)
+}
+
+// stepNo returns the number of a step in the progress panel ("5"), or the
+// range covered by a form section spanning several steps ("7–9"), so that
+// the form sections and the left panel always share the same numbering.
+func stepNo(ids ...string) string {
+	n := make([]string, 0, len(ids))
+	for _, id := range ids {
+		for i, d := range domain.StepDefinitions {
+			if string(d.ID) == id {
+				n = append(n, fmt.Sprint(i+1))
+			}
+		}
+	}
+	return strings.Join(n, "–")
 }
 
 // stepIcon returns the icon of a step state.

@@ -391,7 +391,7 @@ input:disabled, select:disabled, textarea:disabled, input[readonly], textarea[re
 .qa:first-of-type { border-top: 0; padding-top: 0; }
 .qa__head { display: flex; gap: var(--s-3); align-items: center; margin-bottom: var(--s-4); }
 .qa__letter {
-  width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; flex: none;
+  min-width: 28px; height: 28px; padding: 0 6px; border-radius: 9px; display: grid; place-items: center; flex: none;
   font: 700 13px/1 var(--font-mono); color: var(--ctp-crust); background: var(--gradient-accent-diag);
 }
 .qa__title { font-family: var(--font-display); font-weight: 700; font-size: var(--fs-lg); }

@@ -110,7 +110,7 @@ notifications:                    # false = e-mail not sent (still journaled as 
 | `GCA_PROJECT_ID` | | project users select in the IDE (e-mail) |
 | `CREDENTIALS_MODE` | `fake` | `group` (Cloud Identity), `none` (roles granted elsewhere) |
 | `CREDENTIALS_GROUP` | | e-mail of the IAM bundle group |
-| `UX_TIMEOUT` | `10s` | budget of steps X+Y when the user waits |
+| `UX_TIMEOUT` | `10s` | budget of steps 7 + 8 (credentials + license) when the user waits |
 | `JOB_CALL_TIMEOUT` | `30s` | per call in jobs and admin actions |
 | `POOL_CACHE_TTL` | `60s` | Google pool snapshot cache |
 | `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_BURST` | `120` / `30` | per user |
