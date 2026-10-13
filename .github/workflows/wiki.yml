@@ -29,7 +29,14 @@ jobs:
           TOKEN: ${{ secrets.WIKI_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki
+          url="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git"
+          # GitHub creates the wiki repository with its first page: until then
+          # there is nothing to publish to, which is not a failure of the change.
+          if ! GIT_TERMINAL_PROMPT=0 git ls-remote "$url" >/dev/null 2>&1; then
+            echo "::warning title=Wiki not published::The wiki repository does not exist yet (or the token cannot reach it). Enable the wiki (Settings → Features → Wikis), create any first page, then re-run this workflow."
+            exit 0
+          fi
+          git clone --depth 1 "$url" wiki
           rsync -a --delete --exclude '.git' docs/wiki/ wiki/
           cd wiki
           git config user.name "github-actions[bot]"

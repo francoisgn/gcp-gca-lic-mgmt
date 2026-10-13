@@ -64,6 +64,10 @@ type Env struct {
 	Policy *policy.Policy
 }
 
+// UXTimeout is the user-flow budget of the test environment (credentials +
+// license); a call hanging on purpose times out after it.
+const UXTimeout = 3 * time.Second
+
 // Option customises the configuration.
 type Option func(*config.Config)
 
@@ -92,8 +96,11 @@ func New(t *testing.T, seats int, opts ...Option) *Env {
 	cfg := &config.Config{
 		Mode: "all", Env: "dev", BaseURL: "http://portal.test", TimeZone: time.UTC, AuthMode: "dev",
 		GoogleMode: "fake", CredentialsMode: "fake", DirectoryMode: "simulated", MailMode: "log", TrackerMode: "log",
-		OrderMatch:       regexp.MustCompile(`(?i)gemini|code ?assist|cloudaicompanion`),
-		DirectoryTimeout: 300 * time.Millisecond, UXTimeout: 400 * time.Millisecond, JobCallTimeout: 600 * time.Millisecond,
+		OrderMatch: regexp.MustCompile(`(?i)gemini|code ?assist|cloudaicompanion`),
+		// Generous budgets: the race detector on a busy CI runner can make a
+		// whole fulfilment take hundreds of milliseconds. Tests that need a
+		// timeout use the hanging markers ("slow", "edslow"), not short budgets.
+		DirectoryTimeout: time.Second, UXTimeout: UXTimeout, JobCallTimeout: 3 * time.Second,
 		PoolCacheTTL: 0, MetricsRetention: 10 * 24 * time.Hour, BufferRetryEvery: 7 * time.Minute,
 		RateLimitPerMin: 1000, RateLimitBurst: 1000, GCAProjectID: "test-project",
 	}

@@ -13,6 +13,10 @@ All notable changes of the GCA License Portal. Format: [Keep a Changelog](https:
 - **Keyless delivery**: Workload Identity Federation for one GitLab project and protected refs, `gcalm-deployer` service account limited to image push and rollout (`deploy/terraform/cicd.tf`).
 - The release workflow fills in a release drafted in the GitHub UI.
 
+### Fixed
+- Flaky tests under the race detector on busy CI runners: realistic time budgets in the test environment (the timeout tests use hanging calls, not short budgets).
+- *Publish wiki* no longer fails while the wiki repository does not exist: it warns and skips.
+
 ## [0.1.0-alpha.1] - 2026-10-12
 
 First alpha: complete feature set, validated with the simulators (fake Google API, simulated enterprise directory) — **not yet run against the real Google APIs and directory**.
