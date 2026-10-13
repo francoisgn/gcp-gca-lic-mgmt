@@ -35,10 +35,10 @@ func (q Q) AssignmentHistory(ctx context.Context, email string, limit int) ([]As
 func (q Q) InsertAssignment(ctx context.Context, a *Assignment) error {
 	return q.db.QueryRow(ctx, `INSERT INTO license_assignments
 		(user_email, subscription_id, request_id, source, assigned_by, duration, assigned_at, expires_at,
-		 last_usage_at, site, business_unit, gps_code)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+		 last_usage_at, site, business_unit, gps_code, backported_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
 		a.UserEmail, a.SubscriptionID, a.RequestID, a.Source, a.AssignedBy, a.Duration, a.AssignedAt, a.ExpiresAt,
-		a.LastUsageAt, a.Site, a.BusinessUnit, a.GPSCode).Scan(&a.ID)
+		a.LastUsageAt, a.Site, a.BusinessUnit, a.GPSCode, a.BackportedAt).Scan(&a.ID)
 }
 
 // EndAssignment closes an assignment with a reason.

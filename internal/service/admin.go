@@ -12,7 +12,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/domain"
-	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/gcp"
 	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/store"
 	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/telemetry"
 )
@@ -384,7 +383,8 @@ const (
 
 // ResolveDeviation applies the action chosen by an administrator. Google is
 // the source of truth: "remove" and "close" align the portal on Google,
-// "backport" adopts what Google has, "reassign" pushes the portal's view.
+// "backport" adopts what Google has (after a directory check, see
+// backport.go), "reassign" pushes the portal's view.
 func (s *Service) ResolveDeviation(ctx context.Context, admin string, id int64, action string) error {
 	d, err := s.DB.GetDeviation(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
@@ -395,6 +395,20 @@ func (s *Service) ResolveDeviation(ctx context.Context, admin string, id int64, 
 	}
 	if d.ResolvedAt != nil {
 		return conflict("This deviation is already resolved.")
+	}
+	if d.Kind == domain.DeviationGoogleOnly && action == DevActionBackport {
+		gu, err := s.licensedUser(ctx, d.SubscriptionID, d.UserEmail)
+		if errors.Is(err, errGone) {
+			return conflict("%s is not licensed in Google anymore.", d.UserEmail)
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := s.backportOne(ctx, admin, *d, gu); err != nil {
+			return err
+		}
+		s.pool.Invalidate()
+		return nil
 	}
 	actx, cancel := s.jobCtx(ctx, telemetry.KindAdmin)
 	defer cancel()
@@ -408,30 +422,6 @@ func (s *Service) ResolveDeviation(ctx context.Context, admin string, id int64, 
 				return err
 			}
 			_ = s.Credentials.Revoke(actx, d.UserEmail)
-		case d.Kind == domain.DeviationGoogleOnly && action == DevActionBackport:
-			res = domain.ResolveBackport
-			users, err := s.Licensing.Enumerate(actx, d.SubscriptionID)
-			if err != nil {
-				return err
-			}
-			var gu *gcp.LicensedUser
-			for i := range users {
-				if users[i].Email == d.UserEmail {
-					gu = &users[i]
-				}
-			}
-			if gu == nil {
-				return conflict("%s is not licensed in Google anymore.", d.UserEmail)
-			}
-			a := &store.Assignment{UserEmail: d.UserEmail, SubscriptionID: d.SubscriptionID, Source: domain.SourceReconciled,
-				AssignedBy: &admin, Duration: s.Policy.DefaultDuration, AssignedAt: gu.AssignTime,
-				ExpiresAt: s.Policy.DefaultDuration.AddTo(now), LastUsageAt: gu.RecentUsage}
-			if err := s.DB.InsertAssignment(actx, a); err != nil {
-				if store.IsUniqueViolation(err) {
-					return conflict("%s already has an active record.", d.UserEmail)
-				}
-				return err
-			}
 		case d.Kind == domain.DeviationDBOnly && action == DevActionClose:
 			res = domain.ResolveCloseDB
 			if _, err := s.DB.EndActiveAssignmentsByEmail(actx, []string{d.UserEmail}, domain.EndExternalRemoval, admin, now); err != nil {

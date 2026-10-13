@@ -106,6 +106,7 @@ func (s *Server) portalRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/obs/deviations", s.api(roles.RoleAdmin, s.apiObsDeviations))
 	mux.Handle("GET /api/obs/consumption", s.api(roles.RoleAdmin, s.apiConsumption))
 	mux.Handle("POST /api/obs/deviations/{id}/resolve", s.api(roles.RoleAdmin, s.apiResolveDeviation))
+	mux.Handle("POST /api/obs/deviations/backport-all", s.api(roles.RoleAdmin, s.apiBackportAll))
 
 	// Super admin API.
 	mux.Handle("POST /api/super/refresh", s.api(roles.RoleSuperAdmin, s.apiForceRefresh))
