@@ -1,3 +1,5 @@
 # False positives (reviewed). Format: <commit>:<file>:<rule>:<line>
 # Terraform maps the env var SMTP_PASSWORD to the Secret Manager secret NAME "smtp-password".
+586c6c57811bed8738de4df36ffeec6c38b2f805:deploy/terraform/run.tf:hashicorp-tf-password:28
+# Same line before the history rewrite (still on branches created from the old history).
 c47dbcc00622216ff8d2b67089431ac54f61f6c1:deploy/terraform/run.tf:hashicorp-tf-password:28
