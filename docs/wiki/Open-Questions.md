@@ -37,6 +37,7 @@ Assumptions taken in the current version — to confirm with the business / plat
 | 24 | Scheduled jobs and delivery | Cloud Run jobs executed by Cloud Scheduler; delivery from the internal GitLab with Workload Identity Federation (no key). |
 | 25 | Reporting / BI | **No BigQuery / Looker Studio.** Observability stays embedded in the portal; reworked only if real use shows problems (load, missing views). |
 | 26 | Business unit administration | The **5–10 administrators** of `roles.yaml` represent the business units and see every BU; no wider opening, no per-BU administrator role. |
+| 27 | Migration from the previous tool | Parallel run, Google being the truth: the database is first filled with the data of the previous tool (spreadsheet); what remains in Google only shows as deviations and is **back-ported** by an administrator: directory check first (technical failure = not back-ported), non-eligible / unknown users back-ported and flagged, `backported_at` recorded (inventory filter), no e-mail, the 7-day usage rule applies without exception, expiry = default duration from the back-port. No shadow mode. |
 
 ## Backlog — gaps with the target architecture boards
 
@@ -46,11 +47,11 @@ Not scheduled. Sized for the expected volume: **5,000–6,000 seats, 50–80 rem
 |---|---|---|
 | Idle warning e-mail before the 7-day removal | 🟢 next | 50–80 removals a day: fewer surprised users and re-requests |
 | Alert *free seats < 5 %* (Cloud Monitoring) | 🟢 next | at this rate the waiting list builds up within days |
-| **Shadow (read-only) mode**: no write to Google, the group or users; jobs only observe; request form off | 🟠 if a tool manages the seats today | one writer at a time, KPI parity before the switch |
+| Import of the previous tool's spreadsheet into the database | 🔴 before go-live | columns of the spreadsheet to map (e-mail, dates, site / BU / GPS code…) |
 | Other alerts (order change, refusals, drift pool / database / group) | 🟠 | Cloud Monitoring rather than an in-app page |
 | Exceptions registry (externals, technical accounts, permanent list) with owner, reason and review date | 🟠 | governance of non-standard licenses |
 | Training completion checked in the learning platform | 🟠 | needs its API |
 | License and group sync every 15 min; landing page reading the database | ⚪ deferred | ~160 Google calls a day: the 3-hour refresh is enough |
 | Directory profile fields: division, cost center, employee type, manager | ⚪ deferred | consumption is shown by business unit and GPS code only (#22) |
 
-Dropped: BI layer (BigQuery / Looker Studio, decision #25). Done: inventory by pages (200 rows, every license reachable), consumption by business unit / GPS code.
+Dropped: BI layer (BigQuery / Looker Studio, decision #25), shadow mode (replaced by the parallel run with back-port, decision #27). Done: inventory by pages (200 rows, every license reachable), consumption by business unit / GPS code.

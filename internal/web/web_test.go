@@ -205,4 +205,7 @@ func TestInventoryAPI(t *testing.T) {
 	if code, _ = post("/api/admin/unassign-by-filter", `{"filter": {"offset": 1}, "expected": 3}`); code != 400 {
 		t.Fatalf("offset accepted in a mass removal filter: HTTP %d", code)
 	}
+	if code, v = post("/api/obs/deviations/backport-all", `{}`); code != 200 || v["remaining"] == nil {
+		t.Fatalf("back-port all: HTTP %d %v", code, v)
+	}
 }

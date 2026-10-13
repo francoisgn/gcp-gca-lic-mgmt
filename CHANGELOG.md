@@ -15,6 +15,8 @@ All notable changes of the GCA License Portal. Format: [Keep a Changelog](https:
 
 - **Consumption** by business unit or GPS code on the observability page (active, share, unused, external; GPS codes outside the allowlist flagged): display only, no quota. A line opens the inventory filtered on it.
 - Inventory by pages of 200 rows (every license reachable at 5,000+ seats) and GPS code filter.
+- **Back-port with directory check** (parallel run with the previous tool): Google-only licenses adopted per line or with *Back-port all* (200 per click); directory unavailable = not back-ported; non-eligible / unknown users back-ported and flagged; `backported_at` recorded (inventory *Source → back-ported*), IAM bundle group joined, no e-mail; the user's progress panel shows the form steps as not done and the administrator validation.
+- *Open deviations per day* split Google only / portal only, with back-ported licenses per day.
 
 ### Fixed
 - Flaky tests under the race detector on busy CI runners: realistic time budgets in the test environment (the timeout tests use hanging calls, not short budgets).

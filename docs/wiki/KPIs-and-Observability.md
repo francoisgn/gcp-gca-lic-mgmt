@@ -14,7 +14,7 @@ Page *Observability* (admins). Data from `/api/obs/*`, charts with Chart.js. Eve
 | **Period waterfall** | start (assigned seats at the beginning of the period) → each + / − category → end → **free seat gap** up to the pool size |
 | Queue depth per day | users waiting at the end of each day |
 | Buffer depth per day | pending buffer entries at the end of each day |
-| **Deviations per day** | open deviations at the end of each day. Back to 0 only when every deviation is resolved: *Remove from Google* / *Back-port* (GOOGLE_ONLY), *Close record* / *Re-assign* (DB_ONLY), or self-healed |
+| **Deviations per day** | open deviations at the end of each day, stacked **Google only** (in Google, unknown to the portal) / **Portal only** (in the portal, absent from Google), and a line of **licenses back-ported** that day. Back to 0 only when every deviation is resolved: *Remove from Google* / *Back-port* (GOOGLE_ONLY), *Close record* / *Re-assign* (DB_ONLY), or self-healed. During the parallel run with the previous tool, *Google only* = licenses still managed outside the portal. |
 | **External licenses** | active licenses held by external accounts (`*.ext@`): count and **ratio of active licenses (%)** |
 | Directory data changed | active licenses whose site / BU / GPS code changed since assignment (monthly re-check) |
 | No longer eligible | active licenses that would not be auto-approved today |

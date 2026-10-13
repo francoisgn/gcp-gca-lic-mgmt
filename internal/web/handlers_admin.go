@@ -160,6 +160,15 @@ func (s *Server) apiInventory(w http.ResponseWriter, r *http.Request, _ auth.Ide
 	return nil
 }
 
+func (s *Server) apiBackportAll(w http.ResponseWriter, r *http.Request, id auth.Identity) error {
+	res, err := s.svc.BackportAll(r.Context(), id.Email)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, res)
+	return nil
+}
+
 func (s *Server) apiConsumption(w http.ResponseWriter, r *http.Request, _ auth.Identity) error {
 	v, err := s.svc.Consumption(r.Context(), r.URL.Query().Get("by"))
 	if err != nil {

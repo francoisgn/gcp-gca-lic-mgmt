@@ -180,9 +180,12 @@
     area('chart-queue', 'Waiting list', 'queue', G.violet);
     area('chart-buffer', 'Buffer', 'buffer', G.amber);
     draw('chart-deviations', {
-      type: 'bar',
-      data: { labels, datasets: [{ ...bar('Open deviations', pts.map((p) => p.deviations), G.rose), backgroundColor: down(G.rose) }] },
-      options: { plugins: { legend: { display: false } }, scales: { x: xAxis, y: yAxis() } },
+      data: { labels, datasets: [
+        bar('Google only', pts.map((p) => p.googleOnly), G.amber, 'open'),
+        bar('Portal only', pts.map((p) => p.dbOnly), G.rose, 'open'),
+        { ...line('Back-ported that day', pts.map((p) => p.backported), G.green, { width: 1.5 }), stack: 'line' },
+      ] },
+      options: { interaction: { mode: 'index', intersect: false }, scales: { x: { ...xAxis, stacked: true }, y: yAxis({ stacked: true }) } },
     });
   }
 
@@ -270,6 +273,10 @@
   // ---------------------------------------------------------------------------
   async function loadDeviations() {
     const rows = await api('GET', '/api/obs/deviations');
+    const googleOnly = rows.filter((d) => d.kind === 'GOOGLE_ONLY').length;
+    const all = document.getElementById('dev-backport-all');
+    all.hidden = googleOnly === 0;
+    all.textContent = `Back-port all Google only (${googleOnly})`;
     const body = document.getElementById('deviations-body');
     if (!rows.length) {
       body.replaceChildren(el('tr', {}, el('td', { colspan: 4, class: 'table-empty' }, 'No deviation. Portal and Google agree.')));
@@ -288,15 +295,40 @@
     }));
   }
 
+  document.getElementById('dev-backport-all').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const { ok } = await confirm({
+      title: 'Back-port every Google-only license?',
+      text: 'Each user is checked in the enterprise directory, then recorded in the portal (up to 200 per click). Non-eligible or unknown users are back-ported and flagged; if the directory is unavailable, the license stays a deviation. No e-mail is sent. The 7-day usage rule applies at once.',
+      confirmLabel: 'Back-port',
+    });
+    if (!ok) return;
+    await busy(btn, async () => {
+      try {
+        const r = await api('POST', '/api/obs/deviations/backport-all', {}, { timeoutMs: 300000 });
+        const parts = [`${r.backported} back-ported`, `${r.flagged} flagged not eligible`];
+        if (r.pending) parts.push(`${r.pending} pending (directory unavailable)`);
+        if (r.skipped) parts.push(`${r.skipped} skipped`);
+        if (r.remaining) parts.push(`${r.remaining} still open`);
+        toast(parts.join(' · '), r.pending ? 'warn' : 'ok', 9000);
+        loadDeviations();
+        loadDepths(currentDays);
+        refilter();
+        loadConsumption().catch(() => {});
+      } catch (err) { toast(err.message, 'ko'); }
+    });
+  });
+
   async function resolveDeviation(btn, d, action, label) {
     const { ok } = await confirm({ title: `${label} — ${d.userEmail}?`, text: 'Google stays the source of truth; this action is audited.', confirmLabel: label, danger: action === 'remove' });
     if (!ok) return;
     await busy(btn, async () => {
       try {
         await api('POST', `/api/obs/deviations/${d.id}/resolve`, { action }, { timeoutMs: 45000 });
-        toast('Deviation resolved.', 'ok');
+        toast(action === 'backport' ? 'Back-ported: see the inventory (source "back-ported").' : 'Deviation resolved.', 'ok');
         loadDeviations();
         loadDepths(currentDays);
+        if (action === 'backport') refilter();
       } catch (err) { toast(err.message, 'ko'); }
     });
   }
@@ -307,6 +339,9 @@
   const emptyFilter = () => ({ search: '', sites: [], businessUnits: [], gpsCodes: [], sources: [], unusedDaysMin: 0, expiresInDays: 0, accountType: '', directoryCheck: [] });
   // offset: first row of the current page (pages of `limit` rows, served by the API).
   const inv = { filter: emptyFilter(), offset: 0, limit: 200, rows: [], total: 0, selected: new Set(), facetsBuilt: false };
+
+  /** Inventory label of an assignment source (RECONCILED = back-ported from Google). */
+  const sourceLabel = (v) => (v === 'RECONCILED' ? 'back-ported' : v.toLowerCase());
 
   const DIR_LABEL = { CHANGED: 'Data changed', INELIGIBLE: 'No longer eligible', ERROR: 'Check failed', UNCHECKED: 'Never checked' };
 
@@ -349,7 +384,7 @@
       chipGroup('Site', f.sites || [], 'sites'),
       chipGroup('Business unit', f.businessUnits || [], 'businessUnits'),
       chipGroup('Account', ['internal', 'external'], 'accountType', { single: true, render: (v) => (v === 'external' ? `External (*${page.externalSuffix}@)` : 'Internal') }),
-      chipGroup('Source', f.sources || [], 'sources', { render: (v) => v.toLowerCase() }),
+      chipGroup('Source', f.sources || [], 'sources', { render: sourceLabel }),
       chipGroup('Directory check', ['CHANGED', 'INELIGIBLE', 'ERROR', 'UNCHECKED'], 'directoryCheck', { render: (v) => DIR_LABEL[v] }),
       chipGroup('Unused for', [page.unusedDays || 7, 14, 30], 'unusedDaysMin', { single: true, render: (v) => `≥ ${v} days` }),
       chipGroup('Expires within', [7, 30], 'expiresInDays', { single: true, render: (v) => `${v} days` }),
@@ -415,7 +450,8 @@
           el('td', {}, r.userEmail, r.external ? el('span', { class: 'sub' }, el('span', { class: 'badge badge--accent' }, 'external')) : null),
           el('td', {}, r.site || '—'),
           el('td', {}, r.businessUnit || '—', r.gpsCode ? el('span', { class: 'sub mono' }, r.gpsCode) : null),
-          el('td', {}, el('span', { class: `badge ${r.source === 'AUTO' ? 'badge--ok' : r.source === 'ADMIN' ? 'badge--info' : 'badge--accent'}` }, r.source.toLowerCase())),
+          el('td', {}, el('span', { class: `badge ${r.source === 'AUTO' ? 'badge--ok' : r.source === 'ADMIN' ? 'badge--info' : 'badge--accent'}` }, sourceLabel(r.source)),
+            r.backportedAt ? el('span', { class: 'sub' }, `on ${date(r.backportedAt)}`) : null),
           el('td', {}, date(r.assignedAt)),
           el('td', {}, date(r.expiresAt), el('span', { class: 'sub' }, relative(r.expiresAt))),
           el('td', {}, usage ? date(usage) : 'Never', el('span', { class: `sub ${r.unusedDays >= (page.unusedDays || 7) - 2 ? 'text-warn' : ''}` }, `${r.unusedDays} day(s) without usage`)),
