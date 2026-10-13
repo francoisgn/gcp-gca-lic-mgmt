@@ -1,0 +1,6 @@
+Hello {{.Name}},
+
+An administrator rejected your Gemini Code Assist license request on {{date .DecidedAt}}.
+Reason: {{.Reason}}
+
+If you think this decision is not legitimate, you can submit a new request from the portal: {{.PortalURL}}

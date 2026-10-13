@@ -1,0 +1,268 @@
+{{/* =========================================================================
+     Landing page: subscription status (centre) + progress (left panel).
+     One block per state of the functional specification.
+     ========================================================================= */}}
+{{define "content"}}
+{{- $v := .Data.View}}{{$p := .Data.Policy}}
+<div class="container">
+
+  <section class="hero" aria-labelledby="hero-title">
+    <div>
+<pre class="hero__ascii" aria-hidden="true">██╗      ██████╗   ██████╗  █████╗
+╚██╗    ██╔════╝  ██╔════╝ ██╔══██╗
+ ╚██╗   ██║  ███╗ ██║      ███████║
+ ██╔╝   ██║   ██║ ██║      ██╔══██║
+██╔╝    ╚██████╔╝ ╚██████╗ ██║  ██║
+╚═╝      ╚═════╝   ╚═════╝ ╚═╝  ╚═╝</pre>
+      <h1 class="hero__title" id="hero-title">Your Gemini Code Assist license, <span class="gradient-text">self-service</span>.</h1>
+      <p class="hero__lead">Request, follow and manage your license in a few clicks. Eligible requests are approved automatically as soon as a seat is free.</p>
+    </div>
+    <img class="hero__art" src="/static/img/hero-desk.svg" alt="">
+  </section>
+
+  {{- if $v.Degraded}}
+  <div class="alert alert--warn" role="status">
+    <span class="alert__icon">{{icon "alert"}}</span>
+    <div><div class="alert__title">Google license service partially unavailable</div>
+      <p>Some information below comes from the portal database and may be slightly out of date.</p></div>
+  </div>
+  {{- end}}
+
+  <div class="workspace">
+    <aside class="progress" aria-label="Request progress">{{template "steps" $v.Steps}}</aside>
+
+    <section class="frame" aria-live="polite">
+
+    {{- /* ===================== ACTIVE LICENSE ===================== */}}
+    {{- if eq $v.State "ACTIVE"}}{{$a := $v.Active}}
+      <div class="card card--accent">
+        {{template "status" (dict "Tone" "ok" "Title" "Your license is active" "Sub" (printf "Gemini Code Assist · subscription %s" $a.Subscription))}}
+        <dl class="facts">
+          <div class="fact"><dt>Since</dt><dd>{{date $a.Since}}<small>{{rel $a.Since}}</small></dd></div>
+          <div class="fact"><dt>Until</dt><dd>{{if $a.Until}}{{date $a.Until}}<small>{{rel $a.Until}}{{with $a.DurationLabel}} · {{.}}{{end}}</small>{{else}}—<small>Assigned outside the portal</small>{{end}}</dd></div>
+          <div class="fact"><dt>Last usage</dt><dd>{{if $a.LastUsage}}{{date $a.LastUsage}}<small>{{rel $a.LastUsage}}</small>{{else}}Not used yet<small>Usage is reported by Google within 24 h</small>{{end}}</dd></div>
+          <div class="fact"><dt>Removal if unused</dt><dd>{{date $a.PurgeAt}}<small>{{rel $a.PurgeAt}}</small></dd></div>
+        </dl>
+        <div class="alert alert--info" style="margin-top: 20px">
+          <span class="alert__icon">{{icon "info"}}</span>
+          <div><div class="alert__title">Use it or lose it</div>
+            <p>A license without any usage for <strong>{{$v.UnusedDays}} days</strong> is removed automatically and given to the next person in the waiting list. It also ends on the date you requested.</p></div>
+        </div>
+        {{template "usage" (dict "Links" $p.Links "UnusedDays" $v.UnusedDays)}}
+      </div>
+
+    {{- /* ===================== BUFFER (timeout) ===================== */}}
+    {{- else if eq $v.State "BUFFERED"}}{{$b := $v.Buffer}}
+      <div class="card">
+        {{template "status" (dict "Tone" "warn" "Title" "Your request is being processed with priority" "Sub" "A Google or directory service did not answer in time — nothing is lost.")}}
+        <div class="row" style="align-items: flex-end; gap: 32px; margin-bottom: 20px">
+          <div><div class="eyebrow">Position in the buffer</div><div class="position"><span class="position__n">#{{$b.Position}}</span><span class="position__of">of {{$v.BufferTotal}}</span></div></div>
+          <dl class="facts grow">
+            <div class="fact"><dt>Buffered since</dt><dd>{{datetime $b.CreatedAt}}<small>{{rel $b.CreatedAt}}</small></dd></div>
+            <div class="fact"><dt>Pending step</dt><dd>{{if eq (printf "%s" $b.Stage) "DIRECTORY"}}Directory validation{{else if eq (printf "%s" $b.Stage) "CREDENTIALS"}}Cloud credentials{{else}}License assignment{{end}}<small>{{$b.Attempts}} automatic retr{{if eq $b.Attempts 1}}y{{else}}ies{{end}} so far</small></dd></div>
+          </dl>
+        </div>
+        <div class="alert alert--warn">
+          <span class="alert__icon">{{icon "clock"}}</span>
+          <div><div class="alert__title">Priority assignment</div>
+            <p>Buffered requests are retried automatically every {{human $v.RetryEvery}} and are served <strong>before</strong> the waiting list. Come back in about 10 minutes, you will also receive an e-mail.</p></div>
+        </div>
+        <div class="actions"><a class="btn btn--secondary" href="/">{{icon "refresh"}} Refresh</a></div>
+      </div>
+
+    {{- /* ===================== CASE 0.1 — PENDING ADMIN ===================== */}}
+    {{- else if eq $v.State "PENDING_ADMIN"}}{{$r := $v.Request}}
+      <div class="card">
+        {{template "status" (dict "Tone" "info" "Title" "Waiting for an administrator" "Sub" (printf "Escalated on %s — the form is locked until a decision is made." (datetime $r.EscalatedAt)))}}
+        <div class="row" style="margin-bottom: 20px">
+          <span class="badge badge--plain">Your records: {{$v.TotalRequests}} request{{if gt $v.TotalRequests 1}}s{{end}}</span>
+          <span class="badge {{if $v.Rejections}}badge--ko{{else}}badge--plain{{end}}">{{$v.Rejections}} rejected</span>
+        </div>
+        {{with $r.DirReason}}<div class="alert alert--ko"><span class="alert__icon">{{icon "x"}}</span><div><div class="alert__title">Directory validation</div><p>{{.}}</p></div></div>{{end}}
+        <h3 class="card__title" style="margin-bottom: 12px">Your request</h3>
+        {{template "request-readonly" (dict "R" $r "Policy" $p)}}
+        <hr>
+        <div class="eyebrow" style="margin-bottom: 8px">Administrators</div>
+        {{template "admins" $v.Admins}}
+        {{if $v.Rejected}}<hr>{{template "rejected" $v}}{{end}}
+      </div>
+
+    {{- /* ===================== CASE 1 — WAITING LIST ===================== */}}
+    {{- else if eq $v.State "QUEUED"}}{{$r := $v.Request}}
+      <div class="card">
+        {{template "status" (dict "Tone" "info" "Title" "Pool exhausted — you are in the waiting list" "Sub" "Your request is validated. A license is assigned automatically as soon as one is released.")}}
+        <div class="row" style="align-items: flex-end; gap: 32px">
+          {{with $v.Queue}}<div><div class="eyebrow">Position</div><div class="position"><span class="position__n">#{{.Position}}</span><span class="position__of">of {{$v.QueueTotal}}</span></div></div>{{end}}
+          <dl class="facts grow">
+            <div class="fact"><dt>Requested on</dt><dd>{{date $r.CreatedAt}}<small>{{rel $r.CreatedAt}}</small></dd></div>
+            <div class="fact"><dt>In the queue since</dt><dd>{{date $r.QueuedAt}}<small>{{rel $r.QueuedAt}}</small></dd></div>
+            <div class="fact"><dt>Requested duration</dt><dd>{{durLabel $r.Duration}}</dd></div>
+          </dl>
+        </div>
+        <div class="actions">
+          <a class="btn btn--secondary" href="/">{{icon "refresh"}} Refresh</a>
+          <button class="btn btn--ghost" type="button" id="leave-queue">Leave the waiting list</button>
+        </div>
+      </div>
+
+    {{- /* ===================== DIRECTORY KO (choice pending) ===================== */}}
+    {{- else if eq $v.State "DIRECTORY_KO"}}{{$r := $v.Request}}
+      <div class="card" id="dirko-card" data-request="{{$r.ID}}">
+        {{template "status" (dict "Tone" "ko" "Title" "Automatic approval is not possible" "Sub" (str $r.DirReason))}}
+        <p>You can stop here, or escalate your request to an administrator with a few details about your context.</p>
+        <div class="actions" id="dirko-choice">
+          <button class="btn btn--primary" type="button" data-action="escalate">{{icon "send"}} Escalate to an administrator</button>
+          <button class="btn btn--ghost" type="button" data-action="exit">Withdraw my request</button>
+        </div>
+        {{template "escalation-form"}}
+      </div>
+
+    {{- /* ===================== NEW / REJECTED / FAILED ===================== */}}
+    {{- else}}
+      {{- if eq $v.State "REJECTED"}}{{$r := $v.Request}}
+      <div class="card">
+        {{template "status" (dict "Tone" "ko" "Title" "Your last request was rejected" "Sub" (printf "Rejected on %s by %s." (datetime $r.DecidedAt) (name (str $r.DecidedBy))))}}
+        <div class="row" style="margin-bottom: 20px">
+          <span class="badge badge--plain">Your records: {{$v.TotalRequests}} request{{if gt $v.TotalRequests 1}}s{{end}}</span>
+          <span class="badge badge--ko">{{$v.Rejections}} rejected</span>
+        </div>
+        {{template "rejected" $v}}
+        <div class="actions">
+          <button class="btn btn--primary" type="button" id="resubmit">I think this is not legitimate — submit a new request</button>
+        </div>
+      </div>
+      {{- end}}
+
+      {{- if eq $v.State "FAILED"}}
+      <div class="alert alert--ko">
+        <span class="alert__icon">{{icon "x"}}</span>
+        <div><div class="alert__title">Your last request could not be completed</div>
+          <p>A technical error occurred ({{str $v.Request.FailureReason}}). You can submit a new request; contact an administrator if it happens again.</p></div>
+      </div>
+      {{- end}}
+
+      <div id="request-zone" {{if eq $v.State "REJECTED"}}hidden{{end}}>
+        {{- if $v.PoolExhausted}}
+        <div class="alert alert--ko" id="exhausted-alert">
+          <span class="alert__icon">{{icon "alert"}}</span>
+          <div><div class="alert__title">Pool exhausted</div>
+            <p>Every license is currently assigned. If you continue, your validated request joins the waiting list at <strong>position #{{$v.NextPosition}}</strong>; the standard process below still applies.</p></div>
+        </div>
+        {{- end}}
+        {{template "request-form" .}}
+      </div>
+    {{- end}}
+
+    {{- if ne $v.State "ACTIVE"}}{{template "history" $v.History}}{{end}}
+    </section>
+  </div>
+</div>
+{{end}}
+
+{{/* Progressive request form: each answer unlocks the next question. */}}
+{{define "request-form"}}
+{{- $v := .Data.View}}{{$p := .Data.Policy}}
+<div class="card card--accent">
+  <div class="card__head">
+    <h2 class="card__title">Request a license</h2>
+    <span class="text-muted" style="font-size: 13px">About 2 minutes</span>
+  </div>
+  <form id="request-form" novalidate>
+
+    <fieldset class="qa" data-qa="identity">
+      <div class="qa__head"><span class="qa__letter">{{stepNo "identity"}}</span><span class="qa__title">Identity</span></div>
+      <div class="identity">
+        <span class="avatar" aria-hidden="true">{{.User.Initials}}</span>
+        <div class="grow"><div style="font-weight: 500">{{.User.DisplayName}}</div><div class="text-muted mono">{{.User.Email}}</div></div>
+        <span class="badge badge--ok">Google SSO</span>
+      </div>
+      <div class="actions"><button class="btn btn--primary" type="button" data-next="training">This is me — continue</button></div>
+    </fieldset>
+
+    <fieldset class="qa" data-qa="training" hidden>
+      <div class="qa__head"><span class="qa__letter">{{stepNo "training"}}</span><span class="qa__title">Gemini Code Assist training</span></div>
+      <p class="text-muted">The training is mandatory before getting a license.</p>
+      <div class="chips" role="group" aria-label="Training completed">
+        <button class="chip" type="button" data-training="yes" aria-pressed="false">Yes, I completed it</button>
+        <button class="chip" type="button" data-training="no" aria-pressed="false">Not yet</button>
+      </div>
+      <div class="alert alert--ko" id="training-ko" hidden style="margin-top: 16px">
+        <span class="alert__icon">{{icon "book"}}</span>
+        <div><div class="alert__title">Training required</div>
+          <p>Complete the training first, then come back and answer “Yes”.</p>
+          <a class="btn btn--sm btn--secondary" href="{{$p.Links.Training}}" target="_blank" rel="noopener">{{icon "link"}} Open the training</a></div>
+      </div>
+    </fieldset>
+
+    <fieldset class="qa" data-qa="duration" hidden>
+      <div class="qa__head"><span class="qa__letter">{{stepNo "duration"}}</span><span class="qa__title">Requested duration</span></div>
+      <div class="chips" role="group" aria-label="Duration">
+        {{- range $p.Durations}}
+        <button class="chip" type="button" data-duration="{{.Code}}" aria-pressed="false">{{.Label}}</button>
+        {{- end}}
+      </div>
+    </fieldset>
+
+    <fieldset class="qa" data-qa="details" hidden>
+      <div class="qa__head"><span class="qa__letter">{{stepNo "details"}}</span><span class="qa__title">Usage details</span></div>
+      {{- range $i, $q := $p.Questions}}
+      <div class="field question" data-question="{{$q.ID}}" data-type="{{$q.Type}}" data-required="{{$q.Required}}"
+           data-min="{{$q.MinLength}}" data-max="{{$q.MaxLength}}" {{if $i}}hidden{{end}}>
+        <label for="q-{{$q.ID}}">{{$q.Label}}{{if not $q.Required}} <span class="text-faint">(optional)</span>{{end}}</label>
+        {{- if eq $q.Type "select"}}
+        <div class="chips" role="group" aria-label="{{$q.Label}}">
+          {{- range $q.Options}}<button class="chip chip--sm" type="button" data-value="{{.}}" aria-pressed="false">{{.}}</button>{{end}}
+        </div>
+        {{- else if eq $q.Type "textarea"}}
+        <textarea id="q-{{$q.ID}}" {{if $q.MaxLength}}maxlength="{{$q.MaxLength}}"{{end}}></textarea>
+        {{- else}}
+        <input id="q-{{$q.ID}}" type="text" {{if $q.MaxLength}}maxlength="{{$q.MaxLength}}"{{end}}>
+        {{- end}}
+        {{with $q.Help}}<div class="help">{{.}}</div>{{end}}
+        {{if $q.MinLength}}<div class="help" data-counter>At least {{$q.MinLength}} characters.</div>{{end}}
+      </div>
+      {{- end}}
+      <div class="actions" data-details-next hidden><button class="btn btn--primary" type="button" data-next="directory">Continue</button></div>
+    </fieldset>
+
+    <fieldset class="qa" data-qa="directory" hidden>
+      <div class="qa__head"><span class="qa__letter">{{stepNo "directory"}}</span><span class="qa__title">Enterprise directory validation</span></div>
+      <p class="text-muted">We check your account and your GPS code in the enterprise directory. Eligible profiles are approved automatically.</p>
+      <div id="directory-result"></div>
+      <div class="actions" id="directory-actions">
+        <button class="btn btn--primary" type="button" id="directory-check">{{icon "shield"}} Validate with the directory</button>
+      </div>
+    </fieldset>
+
+    <fieldset class="qa" data-qa="escalation" hidden>
+      {{template "escalation-form"}}
+    </fieldset>
+
+    <fieldset class="qa" data-qa="submit" hidden>
+      <div class="qa__head"><span class="qa__letter">{{stepNo "credentials" "email"}}</span><span class="qa__title">Credentials, license and confirmation</span></div>
+      <div id="submit-zone">
+        <p class="text-muted" id="submit-intro">Everything is ready. We will grant the cloud credentials, assign your license and send you a confirmation e-mail with the set-up guide.</p>
+        <div class="actions"><button class="btn btn--primary" type="button" id="submit-btn">{{icon "send"}} Request my license</button></div>
+      </div>
+      <div id="submit-result"></div>
+    </fieldset>
+  </form>
+</div>
+{{end}}
+
+{{/* W1) escalation form (used in the form and in the directory KO card). */}}
+{{define "escalation-form"}}
+<div id="escalation" hidden>
+  <div class="qa__head" style="margin-top: 8px"><span class="qa__letter">{{stepNo "admin"}}</span><span class="qa__title">Escalate to an administrator</span></div>
+  <div class="field-grid">
+    <div class="field"><label for="esc-division">Division</label><input id="esc-division" type="text" maxlength="120" required></div>
+    <div class="field"><label for="esc-entity">Entity</label><input id="esc-entity" type="text" maxlength="120" required></div>
+    <div class="field"><label for="esc-project">Project</label><input id="esc-project" type="text" maxlength="120" required></div>
+  </div>
+  <div class="field"><label for="esc-comment">Additional comment for administrators <span class="text-faint">(optional)</span></label><textarea id="esc-comment" maxlength="2000"></textarea></div>
+  <div class="actions"><button class="btn btn--primary" type="button" id="escalate-btn">{{icon "send"}} Send to administrators</button></div>
+  <div id="escalation-result"></div>
+</div>
+{{end}}
+
+{{define "scripts"}}<script src="/static/js/home.js?v={{.Version}}"></script>{{end}}

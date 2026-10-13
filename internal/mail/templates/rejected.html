@@ -1,0 +1,7 @@
+{{template "header" .}}
+<h1 style="font-family:Lato,Roboto,Arial,sans-serif;font-size:24px;margin:0 0 16px 0;color:#cdd6f4;">Your license request was rejected</h1>
+<p>Hello {{.Name}},</p>
+<p>An administrator rejected your request on {{date .DecidedAt}}.</p>
+<p>Reason: <strong>{{.Reason}}</strong></p>
+<p>If you think this decision is not legitimate, you can submit a new request from the portal with additional details.</p>
+{{template "footer" .}}

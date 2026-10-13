@@ -1,0 +1,6 @@
+Hello {{.Name}},
+
+Your request is validated but every license of the pool is currently assigned.
+You are #{{.Position}} in the waiting list. A license will be assigned automatically as soon as one is released.
+
+Portal: {{.PortalURL}}

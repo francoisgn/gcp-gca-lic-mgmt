@@ -1,0 +1,196 @@
+{{/* =========================================================================
+     Observability: subscription, license flows (waterfall), queue / buffer
+     depth, deviations with Google, inventory, technical KPIs.
+     Charts and tables are loaded by obs.js from /api/obs/*.
+     ========================================================================= */}}
+{{define "content"}}
+{{- $s := .Data.S}}
+<div class="container page">
+  <div class="page__head">
+    <div>
+      <div class="eyebrow">Observability</div>
+      <h1>Licenses &amp; platform health</h1>
+      <p>Google Cloud is the immutable source of truth: every deviation with the portal is tracked until it is resolved.</p>
+    </div>
+    {{- if .Data.Super}}
+    <div class="row">
+      <button class="btn btn--primary" type="button" id="force-refresh">{{icon "refresh"}} Force subscription refresh</button>
+    </div>
+    {{- end}}
+  </div>
+
+  {{/* --- Subscription ---------------------------------------------------- */}}
+  <div class="card card--accent">
+    {{- with $s.Subscription}}
+    <div class="card__head">
+      <div>
+        <div class="eyebrow">Active subscription</div>
+        <h2 class="mono" style="font-size: 20px; margin-top: 4px">{{shortID .ID}}</h2>
+        <div class="text-muted" style="font-size: 13px">{{.DisplayName}}</div>
+      </div>
+      {{if eq .State "ACTIVE"}}<span class="badge badge--ok">Active</span>{{else}}<span class="badge badge--ko">Inactive — no replacement found</span>{{end}}
+    </div>
+    <dl class="facts">
+      <div class="fact"><dt>Start</dt><dd>{{date .StartTime}}<small>{{rel .StartTime}}</small></dd></div>
+      <div class="fact"><dt>End</dt><dd>{{date .EndTime}}<small>{{rel .EndTime}}{{if .AutoRenew}} · auto-renewal on{{end}}</small></dd></div>
+      <div class="fact"><dt>Seats</dt><dd>{{.SeatsTotal}}<small>{{.SeatsAvailable}} available at last refresh</small></dd></div>
+      <div class="fact"><dt>Last seen in Google</dt><dd>{{datetime .LastSeenAt}}<small>{{rel .LastSeenAt}}</small></dd></div>
+    </dl>
+    {{- else}}
+    <div class="alert alert--ko"><span class="alert__icon">{{icon "alert"}}</span><div><div class="alert__title">No subscription found</div><p>Run a subscription refresh and check the billing account configuration.</p></div></div>
+    {{- end}}
+  </div>
+
+  <div class="kpis" style="margin-top: 20px">
+    <div class="kpi"><div class="kpi__label">Assigned / total</div><div class="kpi__value">{{$s.Counter.Assigned}}<span class="text-faint" style="font-size: 18px"> / {{$s.Counter.Total}}</span></div>
+      {{template "kpibar" dict "Tone" "violet" "Pct" (pct $s.Counter.Assigned $s.Counter.Total) "Sub" "of the pool"}}</div>
+    <div class="kpi {{if $s.QueueDepth}}kpi--warn{{end}}"><div class="kpi__label">Waiting list</div><div class="kpi__value">{{$s.QueueDepth}}</div>
+      {{template "kpibar" dict "Tone" "blue" "Pct" (pct $s.QueueDepth $s.Counter.Total) "Sub" "of the pool size"}}</div>
+    <div class="kpi {{if $s.BufferDepth}}kpi--warn{{end}}"><div class="kpi__label">Buffer</div><div class="kpi__value">{{$s.BufferDepth}}</div></div>
+    <div class="kpi {{if $s.OpenDevs}}kpi--ko{{else}}kpi--ok{{end}}"><div class="kpi__label">Open deviations</div><div class="kpi__value">{{$s.OpenDevs}}</div><div class="kpi__sub">portal vs Google</div></div>
+    <div class="kpi {{if $s.PendingAdmin}}kpi--warn{{end}}"><div class="kpi__label">Escalations</div><div class="kpi__value">{{$s.PendingAdmin}}</div></div>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="kpi__label">External licenses</div><div class="kpi__value">{{$s.Mix.External}}<span class="text-faint" style="font-size: 18px"> / {{$s.Mix.Active}}</span></div>
+      {{template "kpibar" dict "Tone" "amber" "Pct" (pct $s.Mix.External $s.Mix.Active) "Label" (printf "%.1f" $s.ExternalPct) "Sub" "of active licenses"}}</div>
+    <div class="kpi {{if $s.Mix.Changed}}kpi--warn{{end}}"><div class="kpi__label">Directory data changed</div><div class="kpi__value">{{$s.Mix.Changed}}</div>
+      {{template "kpibar" dict "Tone" "blue" "Pct" (pct $s.Mix.Changed $s.Mix.Active) "Sub" "site, BU or GPS code changed"}}</div>
+    <div class="kpi {{if $s.Mix.Ineligible}}kpi--ko{{end}}"><div class="kpi__label">No longer eligible</div><div class="kpi__value">{{$s.Mix.Ineligible}}</div>
+      {{template "kpibar" dict "Tone" "rose" "Pct" (pct $s.Mix.Ineligible $s.Mix.Active) "Sub" "monthly directory re-check"}}</div>
+    <div class="kpi {{if $s.Mix.CheckErrors}}kpi--warn{{end}}"><div class="kpi__label">Re-check failed</div><div class="kpi__value">{{$s.Mix.CheckErrors}}</div>
+      {{template "kpibar" dict "Tone" "amber" "Pct" (pct $s.Mix.CheckErrors $s.Mix.Active) "Sub" (printf "%d never checked yet" $s.Mix.NeverChecked)}}</div>
+  </div>
+
+  {{/* --- Super admin: jobs and simulation --------------------------------- */}}
+  {{- if .Data.Super}}
+  <details class="disclosure" style="margin-top: 8px">
+    <summary>Scheduled jobs</summary>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Job</th><th>Schedule</th><th>Last run</th><th>Status</th><th>Summary</th><th></th></tr></thead>
+      <tbody>
+      {{- range .Data.Jobs}}{{$name := .name}}
+        <tr><td class="mono">{{.name}}<span class="sub">{{.description}}</span></td><td class="mono">{{.cron}}</td>
+          {{- $run := false}}{{range $s.Jobs}}{{if eq .Job $name}}{{$run = .}}{{end}}{{end}}
+          {{- if $run}}<td>{{datetime $run.StartedAt}}<span class="sub">{{rel $run.StartedAt}} · {{$run.Trigger}}</span></td>
+          <td>{{if eq $run.Status "OK"}}<span class="badge badge--ok">OK</span>{{else if eq $run.Status "RUNNING"}}<span class="badge badge--info">Running</span>{{else}}<span class="badge badge--ko">{{$run.Status}}</span>{{end}}</td>
+          <td class="mono" style="font-size: 12px">{{str $run.Summary}}{{with $run.Error}}<span class="sub text-ko">{{.}}</span>{{end}}</td>
+          {{- else}}<td class="text-faint">never</td><td></td><td></td>{{end}}
+          <td class="num"><button class="btn btn--sm btn--secondary" type="button" data-run-job="{{.name}}">Run now</button></td></tr>
+      {{- end}}
+      </tbody>
+    </table></div>
+  </details>
+  {{- if eq $s.GoogleMode "fake"}}
+  <details class="disclosure">
+    <summary>Simulation (fake Google API — development only)</summary>
+    <div class="row" style="align-items: flex-end">
+      <div><label for="sim-seats">Pool size</label><input id="sim-seats" type="number" min="0" max="1000" value="{{$s.Counter.Total}}" style="width: 120px"></div>
+      <button class="btn btn--secondary" type="button" id="sim-seats-btn">Change seats</button>
+      <button class="btn btn--secondary" type="button" id="sim-rollover-btn">Simulate subscription renewal</button>
+      <div><label for="sim-remove">Remove in Google (DB_ONLY demo)</label><input id="sim-remove" type="email" placeholder="user@example.com"></div>
+      <button class="btn btn--danger" type="button" id="sim-remove-btn">Remove</button>
+    </div>
+  </details>
+  {{- end}}
+  {{- end}}
+
+  {{/* --- License flows -------------------------------------------------- */}}
+  <section class="section" id="flows">
+    <div class="section__head">
+      <div><h2>License flows</h2><p>Assignments (+) and removals (−) per day, and free seats at the end of each day.</p></div>
+      <div class="chips" role="group" aria-label="Period" id="period">
+        <button class="chip chip--sm" type="button" data-days="14" aria-pressed="false">14 days</button>
+        <button class="chip chip--sm" type="button" data-days="30" aria-pressed="true">30 days</button>
+        <button class="chip chip--sm" type="button" data-days="90" aria-pressed="false">90 days</button>
+      </div>
+    </div>
+    <div class="charts">
+      <div class="chart"><div class="chart__title">Daily flows</div><div class="chart__sub">Auto / admin assignments above zero, removals by reason below, free seats as a line</div><div class="chart__canvas"><canvas id="chart-flows"></canvas></div></div>
+      <div class="chart"><div class="chart__title">Period waterfall</div><div class="chart__sub">From the assigned seats at the start of the period to the end</div><div class="chart__canvas"><canvas id="chart-waterfall"></canvas></div></div>
+    </div>
+  </section>
+
+  {{/* --- Queue / buffer depth ------------------------------------------- */}}
+  <section class="section">
+    <div class="section__head"><div><h2>Waiting list &amp; buffer depth</h2><p>Number of users at the end of each day.</p></div></div>
+    <div class="charts">
+      <div class="chart"><div class="chart__title">Queue depth per day</div><div class="chart__canvas"><canvas id="chart-queue"></canvas></div></div>
+      <div class="chart"><div class="chart__title">Buffer depth per day</div><div class="chart__canvas"><canvas id="chart-buffer"></canvas></div></div>
+    </div>
+  </section>
+
+  {{/* --- Deviations ------------------------------------------------------- */}}
+  <section class="section" id="deviations">
+    <div class="section__head"><div><h2>Deviations with Google</h2><p>Licenses that exist on one side only. The counter goes back to zero only when each deviation is resolved (remove or back-port).</p></div></div>
+    <div class="charts">
+      <div class="chart"><div class="chart__title">Open deviations per day</div><div class="chart__canvas"><canvas id="chart-deviations"></canvas></div></div>
+      <div class="chart"><div class="chart__title">Open deviations</div><div class="chart__sub">GOOGLE_ONLY: assigned in Google, unknown to the portal · DB_ONLY: active in the portal, absent from Google</div>
+        <div class="table-wrap" style="max-height: 260px; overflow: auto"><table>
+          <thead><tr><th>User</th><th>Kind</th><th>Detected</th><th>Resolution</th></tr></thead>
+          <tbody id="deviations-body"><tr><td colspan="4" class="table-empty">Loading…</td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+  </section>
+
+  {{/* --- Inventory -------------------------------------------------------- */}}
+  <section class="section" id="inventory">
+    <div class="section__head"><div><h2>Assigned licenses inventory</h2><p>Select filter chips to narrow the list, then remove selected users or every user matching the criteria.</p></div></div>
+    <div class="card">
+      <div class="toolbar">
+        <input class="grow" type="search" id="inv-search" placeholder="Search an e-mail…" aria-label="Search">
+        <span class="text-muted" id="inv-count" style="font-size: 13px"></span>
+      </div>
+      <div class="stack" id="inv-filters" style="margin-bottom: 16px"></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th><input type="checkbox" id="inv-all" aria-label="Select all"></th><th>User</th><th>Site</th><th>BU</th><th>Source</th><th>Assigned</th><th>Expires</th><th>Last usage</th><th>Directory</th><th>Google</th></tr></thead>
+        <tbody id="inv-body"><tr><td colspan="10" class="table-empty">Loading…</td></tr></tbody>
+      </table></div>
+      <div class="selection-bar" id="inv-bar">
+        <span id="inv-selected" class="text-muted">0 selected</span>
+        <div class="row">
+          <button class="btn btn--sm btn--secondary" type="button" id="inv-recheck" disabled>Re-check directory</button>
+          <button class="btn btn--sm btn--secondary" type="button" id="inv-ack" disabled>Accept directory changes</button>
+          <button class="btn btn--sm btn--danger" type="button" id="inv-remove-selected" disabled>Remove selected</button>
+          <button class="btn btn--sm btn--danger" type="button" id="inv-remove-matching" disabled>Remove all matching</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {{/* --- Technical KPIs -------------------------------------------------- */}}
+  <section class="section" id="tech">
+    <div class="section__head"><div><h2>Technical KPIs</h2><p>Outbound calls of the last 10 days (retention).</p></div></div>
+    <div class="charts">
+      <div class="chart chart--wide"><div class="chart__title">Enterprise directory — load &amp; availability</div><div class="chart__sub">Calls per day by origin (user requests, monthly re-check, admin) · availability = calls the directory answered / all calls</div><div class="chart__canvas"><canvas id="chart-ed-load"></canvas></div></div>
+      <div class="chart"><div class="chart__title">Enterprise directory — errors by type</div><div class="chart__canvas"><canvas id="chart-ed-errors"></canvas></div></div>
+      <div class="chart"><div class="chart__title">Enterprise directory — response time</div><div class="chart__sub">p50 / p95 in ms, successful calls</div><div class="chart__canvas"><canvas id="chart-ed-latency"></canvas></div></div>
+      <div class="chart"><div class="chart__title">Google — credentials grant (IAM bundle)</div><div class="chart__sub">p50 / p95 in ms, successful calls</div><div class="chart__canvas"><canvas id="chart-cred-latency"></canvas></div></div>
+      <div class="chart"><div class="chart__title">Google — license assignment</div><div class="chart__sub">p50 / p95 in ms, successful calls</div><div class="chart__canvas"><canvas id="chart-assign-latency"></canvas></div></div>
+      <div class="chart"><div class="chart__title">Timeouts</div><div class="chart__sub">Initial process (user waiting) vs retry mechanism (jobs)</div><div class="chart__canvas"><canvas id="chart-timeouts"></canvas></div></div>
+      <div class="chart"><div class="chart__title">App access vs Google license checks</div><div class="chart__sub">Page views vs calls to Google (cache + rate limiting effect)</div><div class="chart__canvas"><canvas id="chart-access"></canvas></div></div>
+    </div>
+  </section>
+
+  {{/* --- Subscriptions history -------------------------------------------- */}}
+  <section class="section">
+    <div class="section__head"><div><h2>Subscriptions history</h2></div></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Order</th><th>State</th><th>Start</th><th>End</th><th class="num">Seats</th><th>Replaced by</th></tr></thead>
+      <tbody>{{range $s.Subscriptions}}<tr><td class="mono">{{shortID .ID}}{{if .IsCurrent}} <span class="badge badge--accent">current</span>{{end}}<span class="sub">{{.DisplayName}}</span></td>
+        <td>{{if eq .State "ACTIVE"}}<span class="badge badge--ok">Active</span>{{else}}<span class="badge badge--plain">Inactive</span>{{end}}</td>
+        <td>{{date .StartTime}}</td><td>{{date .EndTime}}</td><td class="num">{{.SeatsTotal}}</td><td class="mono">{{with .ReplacedBy}}{{shortID .}}{{end}}</td></tr>{{end}}</tbody>
+    </table></div>
+  </section>
+</div>
+{{end}}
+{{define "scripts"}}
+<script src="/static/vendor/chart-4.5.0.umd.min.js"></script>
+<script src="/static/js/obs.js?v={{.Version}}"></script>
+{{end}}
+
+{{/* Thin gradient progress bar of a ratio KPI tile, with its percentage. */}}
+{{define "kpibar"}}
+<div class="kpi__bar kpi__bar--{{.Tone}}" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{.Pct}}"><span style="width: {{.Pct}}%"></span></div>
+<div class="kpi__foot"><span class="kpi__sub">{{.Sub}}</span><span class="kpi__pct">{{or .Label .Pct}} %</span></div>
+{{end}}

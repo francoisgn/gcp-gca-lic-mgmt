@@ -1,0 +1,212 @@
+{{/* =========================================================================
+     Administration: approvals, waiting list, buffer, manual actions, audit.
+     ========================================================================= */}}
+{{define "content"}}
+{{- $o := .Data.O}}{{$p := .Data.Policy}}
+<div class="container page">
+  <div class="page__head">
+    <div>
+      <div class="eyebrow">Administration</div>
+      <h1>License operations</h1>
+      <p>Approve escalations, follow the waiting list and the buffer, assign or transfer licenses. Inventory and mass removal are on the <a href="/observability#inventory">observability page</a>.</p>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi {{if $o.Pending}}kpi--warn{{end}}"><div class="kpi__label">Escalations waiting</div><div class="kpi__value">{{len $o.Pending}}</div></div>
+    <div class="kpi"><div class="kpi__label">Waiting list</div><div class="kpi__value">{{len $o.Queue}}</div></div>
+    <div class="kpi {{if $o.Buffer}}kpi--warn{{end}}"><div class="kpi__label">Buffer</div><div class="kpi__value">{{len $o.Buffer}}</div><div class="kpi__sub">retried every 7 min</div></div>
+    <div class="kpi"><div class="kpi__label">Licenses</div><div class="kpi__value">{{$o.Counter.Assigned}}<span class="text-faint" style="font-size: 18px"> / {{$o.Counter.Total}}</span></div><div class="kpi__sub">{{$o.Counter.Reserved}} reserved (in flight or buffered)</div></div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="approvals">Approvals {{if $o.Pending}}<span class="badge badge--count">{{len $o.Pending}}</span>{{end}}</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="queue">Waiting list</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="buffer">Buffer</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="actions">Assign &amp; transfer</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="gps">GPS codes <span class="badge badge--plain">{{len $o.GPSCodes}}</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="notifications">Notifications</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="audit">Decisions &amp; audit</button>
+  </div>
+
+  {{/* --- Approvals ------------------------------------------------------- */}}
+  <section data-panel="approvals">
+    {{- if not $o.Pending}}
+    <div class="card empty">{{icon "ok"}}<p>No escalation waiting. Nice.</p></div>
+    {{- end}}
+    {{- range $o.Pending}}
+    <article class="card" data-request="{{.ID}}">
+      <div class="card__head">
+        <div class="row">
+          <span class="avatar" aria-hidden="true">{{initials .UserEmail}}</span>
+          <div><div style="font-weight: 500">{{name .UserEmail}}</div><div class="text-muted mono" style="font-size: 13px">{{.UserEmail}}</div></div>
+        </div>
+        <div class="row">
+          <span class="badge badge--info">Escalated {{rel .EscalatedAt}}</span>
+          <span class="badge badge--plain">{{durLabel .Duration}}</span>
+        </div>
+      </div>
+      <div class="split">
+        <div class="stack">
+          <div class="eyebrow">Directory answer</div>
+          <div class="alert alert--ko" style="margin: 0"><span class="alert__icon">{{icon "x"}}</span><div><p>{{str .DirReason}}</p></div></div>
+          <div class="dir-chips">
+            <span class="badge badge--plain">Account {{str .DirAccountStatus}}</span>
+            <span class="badge badge--plain">Site {{str .DirSite}}</span>
+            <span class="badge badge--plain">BU {{str .DirBusinessUnit}}</span>
+            {{$g := str .DirGPSCode}}<span class="badge badge--plain">GPS {{if $g}}{{$g}}{{else}}—{{end}}</span>
+          </div>
+          <div class="eyebrow" style="margin-top: 16px">Escalation</div>
+          <div>{{str .EscDivision}} · {{str .EscEntity}} · {{str .EscProject}}</div>
+          {{with .EscComment}}<p class="text-muted">“{{.}}”</p>{{end}}
+        </div>
+        <div class="stack">
+          <div class="eyebrow">Form answers</div>
+          {{- $r := .}}
+          <ul class="list-plain">
+            {{- range $p.Questions}}<li><span class="text-muted">{{.Label}}:</span> {{index $r.Answers .ID}}</li>{{end}}
+          </ul>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn btn--ok" type="button" data-approve="{{.ID}}">{{icon "check"}} Approve</button>
+        <button class="btn btn--danger" type="button" data-reject="{{.ID}}">{{icon "x"}} Reject</button>
+      </div>
+    </article>
+    {{- end}}
+  </section>
+
+  {{/* --- Waiting list ---------------------------------------------------- */}}
+  <section data-panel="queue" hidden>
+    <div class="card">
+      <div class="card__head"><h3 class="card__title">Waiting list</h3><span class="text-muted" style="font-size: 13px">Served by priority, then first come first served</span></div>
+      {{- if $o.Queue}}
+      <div class="table-wrap"><table>
+        <thead><tr><th class="num">#</th><th>User</th><th>In the queue since</th><th>Priority</th><th></th></tr></thead>
+        <tbody>
+        {{- range $o.Queue}}
+          <tr><td class="num">{{.Position}}</td><td>{{.UserEmail}}</td><td>{{datetime .EnqueuedAt}}<span class="sub">{{rel .EnqueuedAt}}</span></td>
+            <td>{{if ge .Priority 10}}<span class="badge badge--accent">Subscription rollover</span>{{else if ge .Priority 5}}<span class="badge badge--warn">From buffer</span>{{else}}<span class="badge badge--plain">Normal</span>{{end}}</td>
+            <td class="num"><button class="btn btn--sm btn--ghost" type="button" data-cancel-queue="{{.ID}}">Remove</button></td></tr>
+        {{- end}}
+        </tbody></table></div>
+      {{- else}}<div class="empty">{{icon "queue"}}<p>Nobody is waiting.</p></div>{{end}}
+    </div>
+  </section>
+
+  {{/* --- Buffer ------------------------------------------------------------ */}}
+  <section data-panel="buffer" hidden>
+    <div class="card">
+      <div class="card__head"><h3 class="card__title">Pending buffer entries</h3><span class="text-muted" style="font-size: 13px">Timeouts towards Google or the directory, retried every 7 minutes</span></div>
+      {{- if $o.Buffer}}
+      <div class="table-wrap"><table>
+        <thead><tr><th class="num">#</th><th>User</th><th>Stage</th><th>Since</th><th class="num">Attempts</th><th>Last error</th><th></th></tr></thead>
+        <tbody>
+        {{- range $o.Buffer}}
+          <tr><td class="num">{{.Position}}</td><td>{{.UserEmail}}</td><td><span class="badge badge--warn">{{.Stage}}</span></td>
+            <td>{{datetime .CreatedAt}}<span class="sub">{{rel .CreatedAt}}</span></td><td class="num">{{.Attempts}}</td>
+            <td class="mono" style="font-size: 12px; max-width: 280px">{{str .LastError}}</td>
+            <td class="num"><button class="btn btn--sm btn--secondary" type="button" data-retry-buffer="{{.ID}}">{{icon "refresh"}} Retry now</button></td></tr>
+        {{- end}}
+        </tbody></table></div>
+      {{- else}}<div class="empty">{{icon "ok"}}<p>The buffer is empty.</p></div>{{end}}
+    </div>
+    {{- if $o.Abandoned}}
+    <div class="card">
+      <div class="card__head"><h3 class="card__title">Abandoned after too many retries</h3></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>User</th><th>Stage</th><th>Created</th><th>Abandoned</th><th class="num">Attempts</th><th>Last error</th></tr></thead>
+        <tbody>{{range $o.Abandoned}}<tr><td>{{.UserEmail}}</td><td>{{.Stage}}</td><td>{{datetime .CreatedAt}}</td><td>{{datetime .ResolvedAt}}</td><td class="num">{{.Attempts}}</td><td class="mono" style="font-size: 12px">{{str .LastError}}</td></tr>{{end}}</tbody>
+      </table></div>
+    </div>
+    {{- end}}
+  </section>
+
+  {{/* --- Assign & transfer --------------------------------------------- */}}
+  <section data-panel="actions" hidden>
+    <div class="split">
+      <form class="card" id="assign-form">
+        <h3 class="card__title" style="margin-bottom: 4px">Assign a license</h3>
+        <p class="text-muted">Bypasses the form and the directory check (source: admin). Queued if the pool is exhausted.</p>
+        <div class="field"><label for="assign-email">User e-mail</label><input id="assign-email" type="email" required placeholder="firstname.lastname@example.com"></div>
+        <div class="field"><label for="assign-duration">Duration</label>
+          <select id="assign-duration">{{range $p.Durations}}<option value="{{.Code}}" {{if eq .Code $p.DefaultDuration}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+        <div class="actions"><button class="btn btn--primary" type="submit">Assign</button></div>
+      </form>
+      <form class="card" id="transfer-form">
+        <h3 class="card__title" style="margin-bottom: 4px">Transfer a license</h3>
+        <p class="text-muted">Removes the license of a user (end reason: admin removal) and assigns it to another one atomically — the waiting list cannot take the seat in between.</p>
+        <div class="field"><label for="transfer-from">From (current holder)</label><input id="transfer-from" type="email" required></div>
+        <div class="field"><label for="transfer-to">To</label><input id="transfer-to" type="email" required></div>
+        <div class="field"><label for="transfer-duration">Duration for the new holder</label>
+          <select id="transfer-duration">{{range $p.Durations}}<option value="{{.Code}}" {{if eq .Code $p.DefaultDuration}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+        <div class="actions"><button class="btn btn--primary" type="submit">Transfer</button></div>
+      </form>
+    </div>
+  </section>
+
+  {{/* --- GPS codes allowlist -------------------------------------------- */}}
+  <section data-panel="gps" hidden>
+    <div class="split split--aside">
+      <form class="card" id="gps-form">
+        <h3 class="card__title" style="margin-bottom: 4px">Authorize GPS codes</h3>
+        <p class="text-muted">Users whose directory GPS code is in this list are approved automatically (internal accounts only — <code>*{{.Data.External}}@</code> accounts never are). Paste one or several codes separated by spaces, commas or new lines.</p>
+        <div class="field"><label for="gps-codes">GPS code(s)</label><textarea id="gps-codes" rows="3" placeholder="a3f09c1e, b71d22e4" required></textarea></div>
+        <div class="field"><label for="gps-description">Description <span class="text-faint">(optional)</span></label><input id="gps-description" type="text" maxlength="200" placeholder="Team / cost centre"></div>
+        <div class="actions"><button class="btn btn--primary" type="submit">Add</button></div>
+      </form>
+      <div class="card">
+        <div class="card__head"><h3 class="card__title">Authorized codes</h3><span class="text-muted" style="font-size: 13px">Removing a code keeps existing licenses; the nightly check flags them as no longer eligible</span></div>
+        {{- if $o.GPSCodes}}
+        <div class="table-wrap" style="max-height: 480px; overflow: auto"><table>
+          <thead><tr><th>Code</th><th>Description</th><th class="num">Licenses</th><th>Added</th><th></th></tr></thead>
+          <tbody>
+          {{- range $o.GPSCodes}}
+            <tr><td class="mono">{{.Code}}</td><td>{{.Description}}</td><td class="num">{{.Licenses}}</td>
+              <td style="white-space: nowrap">{{date .AddedAt}}<span class="sub">by {{name .AddedBy}}</span></td>
+              <td class="num"><button class="btn btn--sm btn--ghost" type="button" data-remove-gps="{{.Code}}">Remove</button></td></tr>
+          {{- end}}
+          </tbody></table></div>
+        {{- else}}<div class="empty">{{icon "alert"}}<p>The list is empty: no request can be approved automatically.</p></div>{{end}}
+      </div>
+    </div>
+  </section>
+
+  {{/* --- Notifications journal -------------------------------------------- */}}
+  <section data-panel="notifications" hidden>
+    <div class="card">
+      <div class="card__head"><h3 class="card__title">E-mail notifications</h3><span class="text-muted" style="font-size: 13px">Last 100 — events can be disabled in <code>config/policy.yaml</code></span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>When</th><th>Event</th><th>Recipient</th><th>Subject</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {{- range $o.Notifications}}
+          <tr><td>{{datetime .TS}}</td><td class="mono" style="font-size: 12px">{{.Event}}</td><td>{{.Recipient}}</td><td>{{.Subject}}</td>
+            <td>{{if eq .Status "SENT"}}<span class="badge badge--ok">sent</span>{{else if eq .Status "DISABLED"}}<span class="badge badge--plain">disabled</span>{{else}}<span class="badge badge--ko" title="{{str .Error}}">failed</span>{{end}}</td>
+            <td class="num">{{if .BodyText}}<button class="btn btn--sm btn--ghost" type="button" data-view-mail data-subject="{{.Subject}}" data-body="{{.BodyText}}">View</button>{{end}}</td></tr>
+        {{- else}}<tr><td colspan="6" class="table-empty">No notification yet.</td></tr>{{end}}
+        </tbody></table></div>
+    </div>
+  </section>
+
+  {{/* --- Decisions & audit --------------------------------------------- */}}
+  <section data-panel="audit" hidden>
+    <div class="card">
+      <div class="card__head"><h3 class="card__title">Latest decisions</h3></div>
+      {{- if $o.Decisions}}
+      <div class="table-wrap"><table>
+        <thead><tr><th>User</th><th>Decision</th><th>By</th><th>When</th><th>Reason</th></tr></thead>
+        <tbody>{{range $o.Decisions}}<tr><td>{{.UserEmail}}</td><td>{{if .Decision}}{{if eq (printf "%s" (deref .Decision)) "APPROVED"}}<span class="badge badge--ok">Approved</span>{{else}}<span class="badge badge--ko">Rejected</span>{{end}}{{end}}</td><td>{{str .DecidedBy}}</td><td>{{datetime .DecidedAt}}</td><td>{{str .DecisionReason}}</td></tr>{{end}}</tbody>
+      </table></div>
+      {{- else}}<div class="empty"><p>No decision yet.</p></div>{{end}}
+    </div>
+    <div class="card">
+      <div class="card__head"><h3 class="card__title">Audit log</h3><span class="text-muted" style="font-size: 13px">Last 50 administrator and system actions</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Target</th></tr></thead>
+        <tbody>{{range $o.Audit}}<tr><td>{{datetime .TS}}</td><td>{{.Actor}}</td><td class="mono">{{.Action}}</td><td>{{.Target}}</td></tr>{{else}}<tr><td colspan="4" class="table-empty">Nothing yet.</td></tr>{{end}}</tbody>
+      </table></div>
+    </div>
+  </section>
+</div>
+{{end}}
+{{define "scripts"}}<script src="/static/js/admin.js?v={{.Version}}"></script>{{end}}

@@ -1,0 +1,215 @@
+# =============================================================================
+# CI — fast feedback, nothing run twice, nothing run for nothing.
+#
+#   changes ──┬─▶ lint      gofmt · go vet · staticcheck · govulncheck      (Go changed)
+#             ├─▶ test      unit + integration on PostgreSQL, -race, coverage (Go changed)
+#             ├─▶ terraform fmt · init · validate                            (Terraform changed)
+#             └─▶ image     buildx with GitHub cache → GHCR on master / tags (Go or Docker changed)
+#   secrets   gitleaks on the pushed commits                                  (always)
+#   ci-ok     single required check for branch protection                    (always)
+#
+# Efficiency: path filters, Go module + build cache (setup-go), Docker layer
+# cache (type=gha), superseded runs cancelled, jobs in parallel. Same-repo
+# branches run on push; pull requests only run for forks (no duplicates).
+# =============================================================================
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  changes:
+    name: Detect changes
+    # Pull requests from the same repository are already covered by push.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      # Manual runs and release tags skip the filter: everything runs.
+      go: ${{ steps.filter.outputs.go || 'true' }}
+      terraform: ${{ steps.filter.outputs.terraform || 'true' }}
+      image: ${{ steps.filter.outputs.image || 'true' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
+        id: filter
+        if: github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')
+        with:
+          filters: |
+            go: &go
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'internal/**'
+              - 'config/**'
+              - '.github/workflows/ci.yml'
+            terraform:
+              - 'deploy/terraform/**'
+              - '.github/workflows/ci.yml'
+            image:
+              - *go
+              - 'Dockerfile'
+              - '.dockerignore'
+
+  lint:
+    name: Lint
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26" # latest 1.26.x patch (security fixes)
+          check-latest: true
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "::error::gofmt needed on: $unformatted"; exit 1; fi
+      - name: go vet
+        run: go vet ./...
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  test:
+    name: Test (unit + integration)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gcalm
+          POSTGRES_PASSWORD: gcalm
+          POSTGRES_DB: gcalm_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U gcalm"
+          --health-interval 3s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://gcalm:gcalm@localhost:5432/gcalm_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26" # latest 1.26.x patch (security fixes)
+          check-latest: true
+      - name: go test -race
+        # -p 1: integration tests share one database.
+        run: go test -race -p 1 -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage.out ]; then
+            {
+              echo "### Test coverage"
+              echo '```'
+              go tool cover -func=coverage.out | awk '/^total:/ || /internal\/(service|store|web)\//' | tail -n 30
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 7
+          if-no-files-found: ignore
+
+  terraform:
+    name: Terraform
+    needs: changes
+    if: needs.changes.outputs.terraform == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/terraform
+    steps:
+      - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v4
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+      - name: terraform validate
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+  image:
+    name: Container image
+    needs: [changes, lint, test]
+    # Built when Go or Docker files change; pushed only from master and tags.
+    if: |
+      always() && needs.changes.outputs.image == 'true' &&
+      needs.lint.result != 'failure' && needs.test.result != 'failure' &&
+      needs.lint.result != 'cancelled' && needs.test.result != 'cancelled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v') }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=short
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      - uses: docker/login-action@v4
+        if: env.PUSH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.ref_name }}-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  secrets:
+    name: Secret scan
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ci-ok:
+    name: CI OK
+    # Single status to require in branch protection: green when every job
+    # succeeded or was legitimately skipped by the path filters.
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository)
+    needs: [changes, lint, test, terraform, image, secrets]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        run: |
+          echo '${{ toJSON(needs) }}' | jq -e 'to_entries | all(.value.result == "success" or .value.result == "skipped")'

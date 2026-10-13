@@ -1,0 +1,11 @@
+{{define "content"}}
+<div class="container page">
+  <div class="card empty" style="max-width: 640px; margin: 48px auto">
+    {{icon "alert"}}
+    <div class="eyebrow">Error {{.Data.Status}}</div>
+    <h1 style="margin: 8px 0 12px">{{.Title}}</h1>
+    <p>{{.Data.Message}}</p>
+    <div class="actions" style="justify-content: center"><a class="btn btn--secondary" href="/">Back to my license</a></div>
+  </div>
+</div>
+{{end}}

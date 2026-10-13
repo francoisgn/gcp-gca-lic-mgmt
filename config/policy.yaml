@@ -1,0 +1,97 @@
+# -----------------------------------------------------------------------------
+# Business policy — editable without code change (redeploy required).
+# -----------------------------------------------------------------------------
+
+# Durations offered in the form ("c) Duration" step).
+durations:
+  - { code: 7d, label: "7 days" }
+  - { code: 1M, label: "1 month" }
+  - { code: 3M, label: "3 months" }
+  - { code: 6M, label: "6 months" }
+  - { code: 1Y, label: "1 year" }
+default_duration: 3M
+
+# A license without any usage for this number of days is removed.
+unused_days: 7
+
+# Buffered requests are retried every 7 minutes; after this number of
+# attempts the entry is abandoned and flagged to administrators.
+buffer_max_attempts: 30
+
+# E-mail conventions: firstname.lastname@domain for employees,
+# firstname.lastname.ext@domain for external people. External accounts are
+# NEVER approved automatically (escalation to an administrator is possible).
+accounts:
+  external_suffix: ".ext"
+
+# Automatic approval rules applied to the enterprise directory answer.
+# The GPS codes authorized for automatic approval are managed by the
+# administrators in the portal (Admin → GPS codes), not in this file.
+eligibility:
+  account_statuses: ["OK"]
+  gps_code_pattern: "^[0-9a-fA-F]{8}$"
+  allowed_business_units: []   # empty = any business unit
+
+# Nightly re-check of active licenses against the enterprise directory, on the
+# monthly anniversary of each assignment. Changes are flagged in the inventory.
+directory_recheck:
+  enabled: true
+  max_per_run: 2000
+  concurrency: 4
+
+# E-mail notifications (true = sent). Templates: internal/mail/templates
+# (mock-ups until the corporate wording is available).
+notifications:
+  request_escalated: true        # user: request under administrator review
+  admin_new_escalation: true     # administrators: a new escalation to review
+  request_approved: true         # user: approved, license not active yet (queued / in progress)
+  request_rejected: true         # user: rejected by an administrator
+  license_assigned: true         # user: license active (end of the process; mentions the approval if any)
+  queued: true                   # user: pool exhausted, position in the waiting list
+  buffered: true                 # user: a service timed out, automatic retry
+  removed_unused: true           # user: removed after 7 days without usage
+  removed_expired: true          # user: requested duration elapsed
+  removed_admin: true            # user: removed by an administrator (incl. transfer, mass removal)
+  removed_subscription: true     # user: no seat in the renewed subscription, back in the queue
+
+# "d) Usage details" step. Mirror the fields of the current request form here.
+# Each answered question unlocks the next one.
+questions:
+  - id: use_case
+    label: "Main use case"
+    type: select
+    required: true
+    options:
+      - Application development
+      - Infrastructure as code
+      - Data / Machine learning
+      - Test automation
+      - Other
+  - id: ide
+    label: "Primary IDE"
+    type: select
+    required: true
+    options:
+      - Visual Studio Code
+      - JetBrains IDE
+      - Other
+  - id: project
+    label: "Project or product you will use it on"
+    type: text
+    required: true
+    max_length: 120
+  - id: justification
+    label: "Business justification"
+    help: "A couple of sentences: what you expect from Gemini Code Assist."
+    type: textarea
+    required: true
+    min_length: 20
+    max_length: 1000
+
+# Links displayed in the UI and in e-mails.
+links:
+  training: "https://learning.example.com/gemini-code-assist"
+  ai_usage_training: "https://learning.example.com/responsible-ai"
+  vscode_guide: "https://developers.google.com/gemini-code-assist/docs/set-up-gemini"
+  usage_policy: "https://intranet.example.com/policies/generative-ai"
+  support: "https://support.example.com/gca"
