@@ -37,7 +37,7 @@ Typical durations: *lint* ~2 min, *test* ~3 min (race detector), *terraform* ~10
    ```bash
    docker run --rm -p 8080:8080 ghcr.io/francoisgn/gcp-gca-lic-mgmt:latest   # needs a DATABASE_URL, see Local Development
    ```
-5. **Wiki** — after a merge touching `docs/wiki/`, the *Publish wiki* workflow mirrors it to the wiki (Actions → *Publish wiki*).
+5. **Wiki** — after a merge touching `docs/wiki/`, the *Publish wiki* workflow mirrors it to the wiki (Actions → *Publish wiki*). Until the wiki exists (enable it, create a first page) the run is green with a *Wiki not published* warning.
 
 ## Reproduce locally
 
@@ -56,6 +56,7 @@ terraform -chdir=deploy/terraform fmt -check -recursive
 | lint / govulncheck | `Vulnerability #n … Fixed in: module@vX` | `go get module@vX && go mod tidy` (or Go patch release: CI already uses the latest 1.26.x) |
 | lint / gofmt | `gofmt needed on: …` | `gofmt -w .` |
 | test | `TEST_DATABASE_URL` / connection refused | PostgreSQL service not healthy: re-run once |
+| test | unexpected `TIMEOUT` outcome | a budget of `internal/testenv` too short for the race detector: tests that need a timeout use the hanging markers (`slow`, `edslow`…), never a short budget |
 | secrets | `leaks found` | remove the secret, **rotate it**, rewrite the commit if not pushed to `master`; a false positive goes in `.gitleaksignore` (fingerprint) or gets an inline `# gitleaks:allow` |
 | image | push denied | *Settings → Actions → General → Workflow permissions*: read and write, or package settings → *Manage Actions access* |
 

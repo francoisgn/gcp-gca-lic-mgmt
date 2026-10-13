@@ -121,9 +121,10 @@
 
   {{/* --- Deviations ------------------------------------------------------- */}}
   <section class="section" id="deviations">
-    <div class="section__head"><div><h2>Deviations with Google</h2><p>Licenses that exist on one side only. The counter goes back to zero only when each deviation is resolved (remove or back-port).</p></div></div>
+    <div class="section__head"><div><h2>Deviations with Google</h2><p>Licenses that exist on one side only. The counter goes back to zero only when each deviation is resolved (remove or back-port). <em>Back-port</em> adopts a Google license after an enterprise directory check: non-eligible or unknown users are flagged in the inventory, no e-mail is sent.</p></div>
+      <button class="btn btn--sm btn--secondary" type="button" id="dev-backport-all" hidden>Back-port all</button></div>
     <div class="charts">
-      <div class="chart"><div class="chart__title">Open deviations per day</div><div class="chart__canvas"><canvas id="chart-deviations"></canvas></div></div>
+      <div class="chart"><div class="chart__title">Open deviations per day</div><div class="chart__sub">Google only (not in the portal) and portal only (not in Google), back-ported licenses per day</div><div class="chart__canvas"><canvas id="chart-deviations"></canvas></div></div>
       <div class="chart"><div class="chart__title">Open deviations</div><div class="chart__sub">GOOGLE_ONLY: assigned in Google, unknown to the portal · DB_ONLY: active in the portal, absent from Google</div>
         <div class="table-wrap" style="max-height: 260px; overflow: auto"><table>
           <thead><tr><th>User</th><th>Kind</th><th>Detected</th><th>Resolution</th></tr></thead>
@@ -133,19 +134,41 @@
     </div>
   </section>
 
+  {{/* --- Consumption by business unit / GPS code ------------------------- */}}
+  <section class="section" id="consumption">
+    <div class="section__head">
+      <div><h2>Consumption</h2><p>Active licenses per business unit or GPS code — display only, no quota. Click a line to open it in the inventory.</p></div>
+      <div class="chips" role="group" aria-label="Group by" id="cons-by">
+        <button class="chip chip--sm" type="button" data-by="bu" aria-pressed="true">Business unit</button>
+        <button class="chip chip--sm" type="button" data-by="gps" aria-pressed="false">GPS code</button>
+      </div>
+    </div>
+    <div class="table-wrap cons-wrap"><table class="cons">
+      <thead><tr><th id="cons-key">Business unit</th><th class="num">Licenses</th><th class="cons__share">Share of active licenses</th><th class="num" id="cons-unused">Unused</th><th class="num">External</th></tr></thead>
+      <tbody id="cons-body"><tr><td colspan="5" class="table-empty">Loading…</td></tr></tbody>
+    </table></div>
+  </section>
+
   {{/* --- Inventory -------------------------------------------------------- */}}
   <section class="section" id="inventory">
-    <div class="section__head"><div><h2>Assigned licenses inventory</h2><p>Select filter chips to narrow the list, then remove selected users or every user matching the criteria.</p></div></div>
+    <div class="section__head"><div><h2>Assigned licenses inventory</h2><p>Search an e-mail or select filter chips to narrow the list, then remove selected users (current page) or every user matching the criteria (all pages).</p></div></div>
     <div class="card">
       <div class="toolbar">
         <input class="grow" type="search" id="inv-search" placeholder="Search an e-mail…" aria-label="Search">
         <span class="text-muted" id="inv-count" style="font-size: 13px"></span>
       </div>
       <div class="stack" id="inv-filters" style="margin-bottom: 16px"></div>
-      <div class="table-wrap"><table>
-        <thead><tr><th><input type="checkbox" id="inv-all" aria-label="Select all"></th><th>User</th><th>Site</th><th>BU</th><th>Source</th><th>Assigned</th><th>Expires</th><th>Last usage</th><th>Directory</th><th>Google</th></tr></thead>
+      <div class="table-wrap inv-wrap"><table>
+        <thead><tr><th><input type="checkbox" id="inv-all" aria-label="Select all"></th><th>User</th><th>Site</th><th>BU / GPS</th><th>Source</th><th>Assigned</th><th>Expires</th><th>Last usage</th><th>Directory</th><th>Google</th></tr></thead>
         <tbody id="inv-body"><tr><td colspan="10" class="table-empty">Loading…</td></tr></tbody>
       </table></div>
+      <div class="pager" id="inv-pager" hidden>
+        <span class="text-muted" id="inv-range"></span>
+        <div class="row">
+          <button class="btn btn--sm btn--secondary" type="button" id="inv-prev">Previous</button>
+          <button class="btn btn--sm btn--secondary" type="button" id="inv-next">Next</button>
+        </div>
+      </div>
       <div class="selection-bar" id="inv-bar">
         <span id="inv-selected" class="text-muted">0 selected</span>
         <div class="row">

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -86,6 +87,10 @@ func TestPagesAndAuthorization(t *testing.T) {
 		{"alex.martin@example.com", "/api/obs/tech", 200},
 		{"alex.martin@example.com", "/api/obs/depths", 200},
 		{"alex.martin@example.com", "/api/obs/deviations", 200},
+		{"alex.martin@example.com", "/api/obs/consumption?by=bu", 200},
+		{"alex.martin@example.com", "/api/obs/consumption?by=gps", 200},
+		{"alex.martin@example.com", "/api/obs/consumption?by=site", 400},
+		{"jane.doe@example.com", "/api/obs/consumption?by=bu", 403},
 		{"super.admin@example.com", "/observability", 200},
 		{"super.admin@example.com", "/static/css/app.css", 200},
 	} {
@@ -166,5 +171,41 @@ func TestStepNumbers(t *testing.T) {
 		if got := stepNo(c.ids...); got != c.want {
 			t.Errorf("stepNo(%v) = %q, want %q", c.ids, got, c.want)
 		}
+	}
+}
+
+// The inventory API serves pages and filters on GPS codes; the page offset
+// is not part of the filter used by mass removal.
+func TestInventoryAPI(t *testing.T) {
+	ts, _ := newServer(t)
+	post := func(path, body string) (int, map[string]any) {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+path, strings.NewReader(body))
+		req.AddCookie(&http.Cookie{Name: auth.DevCookie, Value: "alex.martin@example.com"})
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var v map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&v)
+		return resp.StatusCode, v
+	}
+	code, v := post("/api/admin/inventory", `{}`)
+	total, _ := v["total"].(float64)
+	if code != 200 || total < 2 {
+		t.Fatalf("first page: HTTP %d %v", code, v)
+	}
+	if code, v = post("/api/admin/inventory", `{"offset": 1}`); code != 200 || v["offset"] != 1.0 || len(v["rows"].([]any)) != int(total)-1 {
+		t.Fatalf("second row on: HTTP %d %v", code, v)
+	}
+	if code, v = post("/api/admin/inventory", `{"gpsCodes": ["not-a-code"]}`); code != 200 || v["total"] != 0.0 {
+		t.Fatalf("gps filter: HTTP %d %v", code, v)
+	}
+	if code, _ = post("/api/admin/unassign-by-filter", `{"filter": {"offset": 1}, "expected": 3}`); code != 400 {
+		t.Fatalf("offset accepted in a mass removal filter: HTTP %d", code)
+	}
+	if code, v = post("/api/obs/deviations/backport-all", `{}`); code != 200 || v["remaining"] == nil {
+		t.Fatalf("back-port all: HTTP %d %v", code, v)
 	}
 }

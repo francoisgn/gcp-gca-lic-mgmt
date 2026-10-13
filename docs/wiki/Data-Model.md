@@ -14,7 +14,7 @@ allowed_gps_codes (admin-managed allowlist)     notifications (e-mail journal)
 |---|---|---|
 | `subscriptions` | Gemini Code Assist orders seen in Google (state, window, seats) | one `is_current` row |
 | `license_requests` | one row per form submission / admin assignment / rollover re-queue: answers, directory result, escalation, decision, fulfilment timestamps, **seat reservation** (`reserved_at`) | one open request per user |
-| `license_assignments` | licenses granted by the portal: source (`AUTO`, `ADMIN`, `RECONCILED`), duration, expiry, last usage, directory attributes at assignment (site, BU, GPS), end reason; **monthly re-check**: `dir_checked_at`, `dir_check_result` (`OK` / `CHANGED` / `INELIGIBLE` / `ERROR`), `dir_check_error`, current directory values (`dir_current_*`), `drift_fields[]`, `drift_detected_at`, `ineligible_reason` | one active assignment per user |
+| `license_assignments` | licenses granted by the portal: source (`AUTO`, `ADMIN`, `RECONCILED`), duration, expiry, last usage, directory attributes at assignment (site, BU, GPS), end reason; **monthly re-check**: `dir_checked_at`, `dir_check_result` (`OK` / `CHANGED` / `INELIGIBLE` / `ERROR`), `dir_check_error`, current directory values (`dir_current_*`), `drift_fields[]`, `drift_detected_at`, `ineligible_reason`; **`backported_at`**: when a Google-only license was adopted (back-port) | one active assignment per user |
 | `queue_entries` | waiting list (priority, enqueue time, outcome) | one waiting entry per user |
 | `buffer_entries` | timed-out operations (stage, attempts, last error) | one pending entry per user |
 | `deviations` | differences with Google (`GOOGLE_ONLY`, `DB_ONLY`) and their resolution | one open deviation per (user, subscription, kind) |

@@ -81,9 +81,22 @@ Request date, assignment date, planned end · how to set up Gemini Code Assist i
 
 ## 4. Observability (admins)
 
-See [[KPIs and Observability]]. Includes the **inventory** of assigned licenses: filter chips (site, business unit, source, **account: internal / external**, **directory check: data changed / no longer eligible / check failed / never checked**, unused ≥ 7/14/30 days, expiring within 7/30 days), e-mail search, selection, **Remove selected** and **Remove all matching** (mass removal by criteria, refused if the matching count changed since the preview).
+See [[KPIs and Observability]]. Includes:
+- **Consumption** per business unit or GPS code (display only, no quota); a line opens the inventory filtered on it.
+- The **inventory** of assigned licenses, **by pages of 200 rows**: filter chips (site, business unit, source, **account: internal / external**, **directory check: data changed / no longer eligible / check failed / never checked**, unused ≥ 7/14/30 days, expiring within 7/30 days), GPS code filter, e-mail search, selection, **Remove selected** (current page) and **Remove all matching** (every page — mass removal by criteria, refused if the matching count changed since the preview).
 
 Directory column: badge of the last monthly re-check (hover = changed fields, reason or error). Actions on the selection: **Re-check directory** (now, instead of waiting for the anniversary) and **Accept directory changes** (the current directory values become the reference, flag cleared).
+
+**Deviations and back-port.** A license assigned in Google but unknown to the portal (previous tool, console) is a *Google only* deviation. *Back-port* (per line, or **Back-port all** — 200 per click) adopts it:
+
+| Step | Rule |
+|---|---|
+| Enterprise directory check | first. Technical failure → nothing is back-ported, the deviation stays open (try again). Unknown account, external, GPS code outside the allowlist, status KO → back-ported **and flagged** *not eligible* (inventory filter *Directory check*), administrators decide. |
+| Record | source *back-ported* (`RECONCILED`), `backported_at`, site / BU / GPS code from the directory, Google's assignment time and last usage kept: the **7-day usage rule applies at once, no exception**; expiry = default duration from the back-port. |
+| IAM bundle group | the user joins it (best effort, the 3-hourly reconciliation catches up). |
+| User | **no e-mail**. The progress panel shows the path: form steps not done (red), directory result, *Admin validation — back-ported by an administrator*, credentials and license done. |
+
+Inventory: chip *Source → back-ported* (date of the back-port under the badge). Observability: *Open deviations per day* split *Google only* / *Portal only*, and back-ported licenses per day.
 
 Super admins additionally get: **Force subscription refresh**, **Run now** on each job, and (fake mode only) the simulation panel.
 
@@ -96,5 +109,5 @@ Every user can send an improvement idea, a problem or a question. It becomes a J
 | Role | Source | Rights |
 |---|---|---|
 | User | anyone allowed through IAP | own license, feedback |
-| Admin | `config/roles.yaml` → `admins` | + admin page, observability, inventory, deviations |
+| Admin | `config/roles.yaml` → `admins` — the 5–10 representatives of the business units | + admin page, observability, inventory, deviations — every business unit |
 | Super admin | `config/roles.yaml` → `super_admins` | + force refresh, run jobs, simulation (dev) |

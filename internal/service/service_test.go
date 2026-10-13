@@ -267,7 +267,9 @@ func TestNoGlobalLockDuringGoogleCalls(t *testing.T) {
 	start := time.Now()
 	_, res := e.Request(t, "fast.user@example.com")
 	mustOutcome(t, res, service.OutcomeAssigned)
-	if d := time.Since(start); d > 350*time.Millisecond {
+	// Blocked behind the slow call, the fast user would wait for its whole
+	// timeout; not blocked, it takes a few tens of milliseconds.
+	if d := time.Since(start); d > testenv.UXTimeout/2 {
 		t.Fatalf("fast user waited %v behind the slow call", d)
 	}
 	mustOutcome(t, <-done, service.OutcomeBuffered)
@@ -276,8 +278,10 @@ func TestNoGlobalLockDuringGoogleCalls(t *testing.T) {
 // Purge: expired and unused (7 days) licenses are removed and notified.
 func TestPurge(t *testing.T) {
 	e := testenv.New(t, 5)
-	e.Request(t, "active.user@example.com")
-	e.Request(t, "lazy.idle@example.com") // never used (fake marker "idle")
+	for _, u := range []string{"active.user@example.com", "lazy.idle@example.com"} { // "idle": never used
+		_, res := e.Request(t, u)
+		mustOutcome(t, res, service.OutcomeAssigned)
+	}
 	dir, err := e.Svc.CheckDirectory(ctx, e.User("short.user@example.com"),
 		service.FormInput{TrainingAck: true, Duration: "7d", Answers: testenv.Form().Answers})
 	if err != nil {

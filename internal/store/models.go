@@ -95,6 +95,7 @@ type Assignment struct {
 	BusinessUnit   *string                 `db:"business_unit" json:"businessUnit"`
 	GPSCode        *string                 `db:"gps_code" json:"gpsCode"`
 	MigratedAt     *time.Time              `db:"migrated_at" json:"migratedAt"`
+	BackportedAt   *time.Time              `db:"backported_at" json:"backportedAt"` // adopted from Google (deviation)
 	EndedAt        *time.Time              `db:"ended_at" json:"endedAt"`
 	EndReason      *domain.EndReason       `db:"end_reason" json:"endReason"`
 	EndedBy        *string                 `db:"ended_by" json:"endedBy"`

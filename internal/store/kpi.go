@@ -54,6 +54,9 @@ type DepthPoint struct {
 	Queue      int       `db:"queue" json:"queue"`
 	Buffer     int       `db:"buffer" json:"buffer"`
 	Deviations int       `db:"deviations" json:"deviations"`
+	GoogleOnly int       `db:"google_only" json:"googleOnly"` // open deviations: in Google, not in the portal
+	DBOnly     int       `db:"db_only" json:"dbOnly"`         // open deviations: in the portal, not in Google
+	Backported int       `db:"backported" json:"backported"`  // licenses back-ported that day
 }
 
 // Depths returns the end-of-day depth of the queue, the buffer and the number
@@ -66,7 +69,13 @@ func (q Q) Depths(ctx context.Context, tz string, days int) ([]DepthPoint, error
 	  (SELECT count(*) FROM buffer_entries x WHERE x.created_at < d.day_end
 	     AND (x.resolved_at IS NULL OR x.resolved_at >= d.day_end))::int AS buffer,
 	  (SELECT count(*) FROM deviations x WHERE x.detected_at < d.day_end
-	     AND (x.resolved_at IS NULL OR x.resolved_at >= d.day_end))::int AS deviations
+	     AND (x.resolved_at IS NULL OR x.resolved_at >= d.day_end))::int AS deviations,
+	  (SELECT count(*) FROM deviations x WHERE x.kind = 'GOOGLE_ONLY' AND x.detected_at < d.day_end
+	     AND (x.resolved_at IS NULL OR x.resolved_at >= d.day_end))::int AS google_only,
+	  (SELECT count(*) FROM deviations x WHERE x.kind = 'DB_ONLY' AND x.detected_at < d.day_end
+	     AND (x.resolved_at IS NULL OR x.resolved_at >= d.day_end))::int AS db_only,
+	  (SELECT count(*) FROM license_assignments x WHERE x.backported_at >= (d.day::timestamp AT TIME ZONE $1)
+	     AND x.backported_at < d.day_end)::int AS backported
 	FROM days d ORDER BY d.day`, tz, days)
 }
 

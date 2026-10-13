@@ -12,7 +12,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/domain"
-	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/gcp"
 	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/store"
 	"github.com/francoisgn/gcp-gca-lic-mgmt/internal/telemetry"
 )
@@ -384,7 +383,8 @@ const (
 
 // ResolveDeviation applies the action chosen by an administrator. Google is
 // the source of truth: "remove" and "close" align the portal on Google,
-// "backport" adopts what Google has, "reassign" pushes the portal's view.
+// "backport" adopts what Google has (after a directory check, see
+// backport.go), "reassign" pushes the portal's view.
 func (s *Service) ResolveDeviation(ctx context.Context, admin string, id int64, action string) error {
 	d, err := s.DB.GetDeviation(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
@@ -395,6 +395,20 @@ func (s *Service) ResolveDeviation(ctx context.Context, admin string, id int64, 
 	}
 	if d.ResolvedAt != nil {
 		return conflict("This deviation is already resolved.")
+	}
+	if d.Kind == domain.DeviationGoogleOnly && action == DevActionBackport {
+		gu, err := s.licensedUser(ctx, d.SubscriptionID, d.UserEmail)
+		if errors.Is(err, errGone) {
+			return conflict("%s is not licensed in Google anymore.", d.UserEmail)
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := s.backportOne(ctx, admin, *d, gu); err != nil {
+			return err
+		}
+		s.pool.Invalidate()
+		return nil
 	}
 	actx, cancel := s.jobCtx(ctx, telemetry.KindAdmin)
 	defer cancel()
@@ -408,30 +422,6 @@ func (s *Service) ResolveDeviation(ctx context.Context, admin string, id int64, 
 				return err
 			}
 			_ = s.Credentials.Revoke(actx, d.UserEmail)
-		case d.Kind == domain.DeviationGoogleOnly && action == DevActionBackport:
-			res = domain.ResolveBackport
-			users, err := s.Licensing.Enumerate(actx, d.SubscriptionID)
-			if err != nil {
-				return err
-			}
-			var gu *gcp.LicensedUser
-			for i := range users {
-				if users[i].Email == d.UserEmail {
-					gu = &users[i]
-				}
-			}
-			if gu == nil {
-				return conflict("%s is not licensed in Google anymore.", d.UserEmail)
-			}
-			a := &store.Assignment{UserEmail: d.UserEmail, SubscriptionID: d.SubscriptionID, Source: domain.SourceReconciled,
-				AssignedBy: &admin, Duration: s.Policy.DefaultDuration, AssignedAt: gu.AssignTime,
-				ExpiresAt: s.Policy.DefaultDuration.AddTo(now), LastUsageAt: gu.RecentUsage}
-			if err := s.DB.InsertAssignment(actx, a); err != nil {
-				if store.IsUniqueViolation(err) {
-					return conflict("%s already has an active record.", d.UserEmail)
-				}
-				return err
-			}
 		case d.Kind == domain.DeviationDBOnly && action == DevActionClose:
 			res = domain.ResolveCloseDB
 			if _, err := s.DB.EndActiveAssignmentsByEmail(actx, []string{d.UserEmail}, domain.EndExternalRemoval, admin, now); err != nil {
@@ -522,18 +512,25 @@ type InventoryRow struct {
 	External        bool       `json:"external"`
 }
 
-// InventoryView is the inventory with its facets.
+// InventoryPageSize is the number of inventory rows per page.
+const InventoryPageSize = 200
+
+// InventoryView is one page of the inventory with its facets.
 type InventoryView struct {
 	Rows   []InventoryRow `json:"rows"`
 	Total  int            `json:"total"`
+	Offset int            `json:"offset"`
+	Limit  int            `json:"limit"`
 	Facets store.Facets   `json:"facets"`
 }
 
-// Inventory returns the active assignments matching a filter, enriched with
-// what Google reports (source of truth).
-func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter) (*InventoryView, error) {
+// Inventory returns one page (from offset) of the active assignments
+// matching a filter, enriched with what Google reports (source of truth).
+// Mass actions apply to every matching assignment, not only to the page.
+func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter, offset int) (*InventoryView, error) {
 	now := s.Now()
-	rows, total, err := s.DB.Inventory(ctx, f, s.Policy.Accounts.ExternalSuffix, now, 1000)
+	offset = max(offset, 0)
+	rows, total, err := s.DB.Inventory(ctx, f, s.Policy.Accounts.ExternalSuffix, now, InventoryPageSize, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +539,7 @@ func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter) (*Inve
 		return nil, err
 	}
 	snap, _ := s.pool.Get(ctx)
-	v := &InventoryView{Total: total, Facets: facets, Rows: make([]InventoryRow, 0, len(rows))}
+	v := &InventoryView{Total: total, Offset: offset, Limit: InventoryPageSize, Facets: facets, Rows: make([]InventoryRow, 0, len(rows))}
 	for _, a := range rows {
 		r := InventoryRow{Assignment: a, External: s.Policy.IsExternal(a.UserEmail)}
 		if gu, ok := snap.Has(a.UserEmail); ok {
@@ -557,6 +554,32 @@ func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter) (*Inve
 		}
 		r.UnusedDays = int(now.Sub(last).Hours() / 24)
 		v.Rows = append(v.Rows, r)
+	}
+	return v, nil
+}
+
+// ConsumptionView is the license consumption by business unit or GPS code.
+type ConsumptionView struct {
+	By         string                 `json:"by"` // "bu" | "gps"
+	UnusedDays int                    `json:"unusedDays"`
+	Total      int                    `json:"total"` // active licenses
+	Rows       []store.ConsumptionRow `json:"rows"`
+}
+
+// Consumption returns the active licenses grouped by business unit (by =
+// "bu") or GPS code (by = "gps"): display only, no quota.
+func (s *Service) Consumption(ctx context.Context, by string) (*ConsumptionView, error) {
+	if by != "bu" && by != "gps" {
+		return nil, badRequest("Group by \"bu\" or \"gps\".")
+	}
+	days := s.Policy.UnusedDays
+	rows, err := s.DB.Consumption(ctx, by, s.Policy.Accounts.ExternalSuffix, s.Now().AddDate(0, 0, -days))
+	if err != nil {
+		return nil, err
+	}
+	v := &ConsumptionView{By: by, UnusedDays: days, Rows: rows}
+	for _, r := range rows {
+		v.Total += r.Licenses
 	}
 	return v, nil
 }

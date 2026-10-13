@@ -122,6 +122,9 @@ func (s *Service) Home(ctx context.Context, user auth.Identity, rejectedPage int
 		v.Active = al
 		v.Request = req
 		v.Steps = allDone(req)
+		if dbActive != nil && dbActive.BackportedAt != nil {
+			v.Steps = s.backportedSteps(dbActive)
+		}
 		return v, nil
 	}
 
@@ -238,6 +241,29 @@ func allDone(req *store.Request) []domain.Step {
 	if req != nil && req.EmailAt == nil && req.Status == domain.ReqAssigned {
 		domain.SetStep(steps, domain.StepEmail, domain.StepWarn, "E-mail will be retried")
 	}
+	return steps
+}
+
+// backportedSteps is the path of a license taken over from Google (previous
+// tool, console): no form step was done, the directory was checked at the
+// back-port, an administrator validated it.
+func (s *Service) backportedSteps(a *store.Assignment) []domain.Step {
+	steps := domain.NewSteps()
+	for _, id := range []domain.StepID{domain.StepIdentity, domain.StepTraining, domain.StepDuration, domain.StepDetails} {
+		domain.SetStep(steps, id, domain.StepKO, "Not done (license back-ported)")
+	}
+	switch {
+	case a.IneligibleReason != nil:
+		domain.SetStep(steps, domain.StepDirectory, domain.StepKO, *a.IneligibleReason)
+	case a.DirCheckResult != nil && *a.DirCheckResult != "ERROR":
+		domain.SetStep(steps, domain.StepDirectory, domain.StepOK, "")
+	default:
+		domain.SetStep(steps, domain.StepDirectory, domain.StepTodo, "")
+	}
+	domain.SetStep(steps, domain.StepAdmin, domain.StepOK, "Back-ported by an administrator on "+a.BackportedAt.In(s.Cfg.TimeZone).Format("2 Jan 2006"))
+	domain.SetStep(steps, domain.StepCredentials, domain.StepOK, "")
+	domain.SetStep(steps, domain.StepLicense, domain.StepOK, "")
+	domain.SetStep(steps, domain.StepEmail, domain.StepSkipped, "No e-mail for a back-port")
 	return steps
 }
 
