@@ -522,18 +522,25 @@ type InventoryRow struct {
 	External        bool       `json:"external"`
 }
 
-// InventoryView is the inventory with its facets.
+// InventoryPageSize is the number of inventory rows per page.
+const InventoryPageSize = 200
+
+// InventoryView is one page of the inventory with its facets.
 type InventoryView struct {
 	Rows   []InventoryRow `json:"rows"`
 	Total  int            `json:"total"`
+	Offset int            `json:"offset"`
+	Limit  int            `json:"limit"`
 	Facets store.Facets   `json:"facets"`
 }
 
-// Inventory returns the active assignments matching a filter, enriched with
-// what Google reports (source of truth).
-func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter) (*InventoryView, error) {
+// Inventory returns one page (from offset) of the active assignments
+// matching a filter, enriched with what Google reports (source of truth).
+// Mass actions apply to every matching assignment, not only to the page.
+func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter, offset int) (*InventoryView, error) {
 	now := s.Now()
-	rows, total, err := s.DB.Inventory(ctx, f, s.Policy.Accounts.ExternalSuffix, now, 1000)
+	offset = max(offset, 0)
+	rows, total, err := s.DB.Inventory(ctx, f, s.Policy.Accounts.ExternalSuffix, now, InventoryPageSize, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +549,7 @@ func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter) (*Inve
 		return nil, err
 	}
 	snap, _ := s.pool.Get(ctx)
-	v := &InventoryView{Total: total, Facets: facets, Rows: make([]InventoryRow, 0, len(rows))}
+	v := &InventoryView{Total: total, Offset: offset, Limit: InventoryPageSize, Facets: facets, Rows: make([]InventoryRow, 0, len(rows))}
 	for _, a := range rows {
 		r := InventoryRow{Assignment: a, External: s.Policy.IsExternal(a.UserEmail)}
 		if gu, ok := snap.Has(a.UserEmail); ok {
@@ -557,6 +564,32 @@ func (s *Service) Inventory(ctx context.Context, f store.InventoryFilter) (*Inve
 		}
 		r.UnusedDays = int(now.Sub(last).Hours() / 24)
 		v.Rows = append(v.Rows, r)
+	}
+	return v, nil
+}
+
+// ConsumptionView is the license consumption by business unit or GPS code.
+type ConsumptionView struct {
+	By         string                 `json:"by"` // "bu" | "gps"
+	UnusedDays int                    `json:"unusedDays"`
+	Total      int                    `json:"total"` // active licenses
+	Rows       []store.ConsumptionRow `json:"rows"`
+}
+
+// Consumption returns the active licenses grouped by business unit (by =
+// "bu") or GPS code (by = "gps"): display only, no quota.
+func (s *Service) Consumption(ctx context.Context, by string) (*ConsumptionView, error) {
+	if by != "bu" && by != "gps" {
+		return nil, badRequest("Group by \"bu\" or \"gps\".")
+	}
+	days := s.Policy.UnusedDays
+	rows, err := s.DB.Consumption(ctx, by, s.Policy.Accounts.ExternalSuffix, s.Now().AddDate(0, 0, -days))
+	if err != nil {
+		return nil, err
+	}
+	v := &ConsumptionView{By: by, UnusedDays: days, Rows: rows}
+	for _, r := range rows {
+		v.Total += r.Licenses
 	}
 	return v, nil
 }

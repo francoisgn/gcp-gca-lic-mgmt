@@ -14,6 +14,7 @@
 | 🔴 Bad release | New image misbehaves | Roll the previous image back: re-run the `deploy` job of the previous tag, or `scripts/rollout.sh <previous image> <region>`. |
 | 🟠 Users complain about HTTP 429 | Rate limit per user | Raise `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_BURST` if legitimate. |
 | Need to free seats quickly | — | *Observability → Inventory*: chip *Unused for ≥ 7 days* (or 14 / 30) → *Remove all matching*. Released seats go to the waiting list automatically. |
+| A business unit asks for its consumption | — | *Observability → Consumption* (by business unit or GPS code) → click its line: the inventory shows its licenses, page by page. |
 | Give a license to a specific person when the pool is full | — | *Admin → Assign & transfer → Transfer* from a holder to the person (atomic; the queue cannot take the seat). |
 | Add / remove an admin | — | Pull request on `config/roles.yaml`, merge, deploy. |
 

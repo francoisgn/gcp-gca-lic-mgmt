@@ -304,7 +304,9 @@
   // ---------------------------------------------------------------------------
   // Inventory: filter chips, selection, removal
   // ---------------------------------------------------------------------------
-  const inv = { filter: { search: '', sites: [], businessUnits: [], sources: [], unusedDaysMin: 0, expiresInDays: 0, accountType: '', directoryCheck: [] }, rows: [], total: 0, selected: new Set(), facetsBuilt: false };
+  const emptyFilter = () => ({ search: '', sites: [], businessUnits: [], gpsCodes: [], sources: [], unusedDaysMin: 0, expiresInDays: 0, accountType: '', directoryCheck: [] });
+  // offset: first row of the current page (pages of `limit` rows, served by the API).
+  const inv = { filter: emptyFilter(), offset: 0, limit: 200, rows: [], total: 0, selected: new Set(), facetsBuilt: false };
 
   const DIR_LABEL = { CHANGED: 'Data changed', INELIGIBLE: 'No longer eligible', ERROR: 'Check failed', UNCHECKED: 'Never checked' };
 
@@ -322,7 +324,7 @@
   function chipGroup(label, values, key, { single = false, render = (v) => v } = {}) {
     const group = el('div', { class: 'filter-group', role: 'group', 'aria-label': label }, el('span', { class: 'filter-group__label' }, label));
     values.forEach((v) => {
-      const chip = el('button', { class: 'chip chip--sm', type: 'button', 'aria-pressed': 'false' }, render(v));
+      const chip = el('button', { class: 'chip chip--sm', type: 'button', 'aria-pressed': 'false', dataset: { key, value: String(v) } }, render(v));
       chip.addEventListener('click', () => {
         const on = chip.getAttribute('aria-pressed') !== 'true';
         if (single) {
@@ -334,7 +336,7 @@
           inv.filter[key] = [...set];
         }
         chip.setAttribute('aria-pressed', String(on));
-        loadInventory();
+        refilter();
       });
       group.append(chip);
     });
@@ -351,15 +353,52 @@
       chipGroup('Directory check', ['CHANGED', 'INELIGIBLE', 'ERROR', 'UNCHECKED'], 'directoryCheck', { render: (v) => DIR_LABEL[v] }),
       chipGroup('Unused for', [page.unusedDays || 7, 14, 30], 'unusedDaysMin', { single: true, render: (v) => `≥ ${v} days` }),
       chipGroup('Expires within', [7, 30], 'expiresInDays', { single: true, render: (v) => `${v} days` }),
+      el('div', { class: 'filter-group', role: 'group', 'aria-label': 'GPS code', id: 'inv-gps', hidden: true }),
     );
     inv.facetsBuilt = true;
   }
 
+  /** Reflects the filter in the chips (after a filter set from elsewhere). */
+  function syncFilterUI() {
+    document.querySelectorAll('#inv-filters .chip[data-key]').forEach((chip) => {
+      const cur = inv.filter[chip.dataset.key];
+      const on = Array.isArray(cur) ? cur.map(String).includes(chip.dataset.value) : String(cur) === chip.dataset.value;
+      chip.setAttribute('aria-pressed', String(on));
+    });
+    document.getElementById('inv-search').value = inv.filter.search;
+    const gps = document.getElementById('inv-gps');
+    if (!gps) return;
+    gps.hidden = !inv.filter.gpsCodes.length;
+    gps.replaceChildren(el('span', { class: 'filter-group__label' }, 'GPS code'), ...inv.filter.gpsCodes.map((code) =>
+      el('button', { class: 'chip chip--sm mono', type: 'button', 'aria-pressed': 'true', title: 'Remove this filter',
+        onclick: () => { inv.filter.gpsCodes = inv.filter.gpsCodes.filter((c) => c !== code); syncFilterUI(); refilter(); } }, `${code} ✕`)));
+  }
+
+  /** New filter: back to the first page. */
+  function refilter() {
+    inv.offset = 0;
+    inv.selected.clear();
+    loadInventory();
+  }
+
+  /** Opens the inventory on one business unit or GPS code (consumption table). */
+  function showInInventory(by, key) {
+    inv.filter = emptyFilter();
+    if (by === 'gps') inv.filter.gpsCodes = [key]; else inv.filter.businessUnits = [key];
+    syncFilterUI();
+    refilter();
+    document.getElementById('inventory').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   async function loadInventory() {
     let v;
-    try { v = await api('POST', '/api/admin/inventory', inv.filter); } catch (err) { toast(err.message, 'ko'); return; }
-    if (!inv.facetsBuilt) buildFacets(v.facets);
-    inv.rows = v.rows; inv.total = v.total;
+    try { v = await api('POST', '/api/admin/inventory', { ...inv.filter, offset: inv.offset }); } catch (err) { toast(err.message, 'ko'); return; }
+    if (!inv.facetsBuilt) { buildFacets(v.facets); syncFilterUI(); } // a consumption line may have set the filter first
+    if (!v.rows.length && v.total > 0 && inv.offset > 0) { // the page emptied (removals): last page
+      inv.offset = Math.floor((v.total - 1) / v.limit) * v.limit;
+      return loadInventory();
+    }
+    inv.rows = v.rows; inv.total = v.total; inv.limit = v.limit;
     inv.selected = new Set([...inv.selected].filter((e) => v.rows.some((r) => r.userEmail === e)));
     const body = document.getElementById('inv-body');
     document.getElementById('inv-count').textContent = `${v.total} license${v.total > 1 ? 's' : ''} match${v.total > 1 ? '' : 'es'}`;
@@ -375,7 +414,7 @@
           el('td', {}, cb),
           el('td', {}, r.userEmail, r.external ? el('span', { class: 'sub' }, el('span', { class: 'badge badge--accent' }, 'external')) : null),
           el('td', {}, r.site || '—'),
-          el('td', {}, r.businessUnit || '—'),
+          el('td', {}, r.businessUnit || '—', r.gpsCode ? el('span', { class: 'sub mono' }, r.gpsCode) : null),
           el('td', {}, el('span', { class: `badge ${r.source === 'AUTO' ? 'badge--ok' : r.source === 'ADMIN' ? 'badge--info' : 'badge--accent'}` }, r.source.toLowerCase())),
           el('td', {}, date(r.assignedAt)),
           el('td', {}, date(r.expiresAt), el('span', { class: 'sub' }, relative(r.expiresAt))),
@@ -384,12 +423,25 @@
           el('td', {}, r.inGoogle ? el('span', { class: 'badge badge--ok' }, 'yes') : el('span', { class: 'badge badge--ko' }, 'missing')));
       }));
     }
+    const pager = document.getElementById('inv-pager');
+    pager.hidden = v.total <= v.limit;
+    document.getElementById('inv-range').textContent = v.rows.length ? `${inv.offset + 1}–${inv.offset + v.rows.length} of ${v.total}` : '';
+    document.getElementById('inv-prev').disabled = inv.offset === 0;
+    document.getElementById('inv-next').disabled = inv.offset + v.limit >= v.total;
     refreshSelection();
+  }
+
+  for (const [id, dir] of [['inv-prev', -1], ['inv-next', 1]]) {
+    document.getElementById(id).addEventListener('click', () => {
+      inv.offset = Math.max(0, inv.offset + dir * inv.limit);
+      inv.selected.clear();
+      loadInventory();
+    });
   }
 
   function refreshSelection() {
     const n = inv.selected.size;
-    document.getElementById('inv-selected').textContent = `${n} selected · ${inv.total} matching the filters`;
+    document.getElementById('inv-selected').textContent = `${n} selected on this page · ${inv.total} matching the filters`;
     document.getElementById('inv-remove-selected').disabled = n === 0;
     document.getElementById('inv-recheck').disabled = n === 0 || n > 50;
     document.getElementById('inv-ack').disabled = n === 0;
@@ -409,7 +461,7 @@
   let searchTimer;
   document.getElementById('inv-search').addEventListener('input', (e) => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { inv.filter.search = e.target.value; loadInventory(); }, 250);
+    searchTimer = setTimeout(() => { inv.filter.search = e.target.value; refilter(); }, 250);
   });
 
   function removalResult(res) {
@@ -489,6 +541,53 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Consumption by business unit / GPS code (display only, no quota)
+  // ---------------------------------------------------------------------------
+  let consBy = 'bu';
+  const int = new Intl.NumberFormat('en-GB');
+
+  async function loadConsumption() {
+    const v = await api('GET', `/api/obs/consumption?by=${consBy}`);
+    document.getElementById('cons-key').textContent = consBy === 'gps' ? 'GPS code' : 'Business unit';
+    document.getElementById('cons-unused').textContent = `Unused ≥ ${v.unusedDays} d`;
+    const body = document.getElementById('cons-body');
+    if (!v.rows.length) {
+      body.replaceChildren(el('tr', {}, el('td', { colspan: 5, class: 'table-empty' }, 'No active license.')));
+      return;
+    }
+    body.replaceChildren(...v.rows.map((r) => {
+      const pct = v.total ? (100 * r.licenses) / v.total : 0;
+      let key = r.key;
+      if (r.key == null) key = el('span', { class: 'text-muted' }, 'Unknown (no directory data)');
+      else if (consBy === 'gps') {
+        key = el('span', { class: 'mono' }, r.key, r.allowlisted ? null
+          : el('span', { class: 'badge badge--warn cons__flag', title: 'Not in the GPS codes allowlist: licenses approved by an administrator' }, 'not allowlisted'));
+      }
+      const tr = el('tr', {},
+        el('td', {}, key),
+        el('td', { class: 'num' }, int.format(r.licenses)),
+        el('td', {}, el('div', { class: 'share' },
+          el('div', { class: 'kpi__bar kpi__bar--green', role: 'meter', 'aria-label': 'Share of active licenses', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': pct.toFixed(1) }, el('span', { style: `width: ${pct}%` })),
+          el('span', { class: 'share__pct' }, `${pct.toFixed(1)} %`))),
+        el('td', { class: `num${r.unused ? ' text-warn' : ''}` }, int.format(r.unused)),
+        el('td', { class: 'num' }, int.format(r.external)));
+      if (r.key != null) {
+        const open = () => showInInventory(consBy, r.key);
+        Object.assign(tr, { tabIndex: 0, title: 'Open in the inventory' });
+        tr.dataset.key = r.key;
+        tr.addEventListener('click', open);
+        tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+      }
+      return tr;
+    }));
+  }
+
+  GCA.radioChips(document.getElementById('cons-by'), (chip) => {
+    consBy = chip.dataset.by;
+    loadConsumption().catch((e) => toast(e.message, 'ko'));
+  });
+
+  // ---------------------------------------------------------------------------
   // Period selector and initial load
   // ---------------------------------------------------------------------------
   let currentDays = 30;
@@ -498,6 +597,6 @@
     loadDepths(currentDays).catch((e) => toast(e.message, 'ko'));
   });
 
-  Promise.all([loadFlows(currentDays), loadDepths(currentDays), loadTech(), loadDeviations(), loadInventory()])
+  Promise.all([loadFlows(currentDays), loadDepths(currentDays), loadTech(), loadDeviations(), loadConsumption(), loadInventory()])
     .catch((e) => toast(`Some data could not be loaded: ${e.message}`, 'ko'));
 })();

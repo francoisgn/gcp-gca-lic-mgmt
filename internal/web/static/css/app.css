@@ -447,6 +447,17 @@ td .sub { display: block; color: var(--text-muted); font-size: 12px; }
 input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--acc-teal); }
 .pager { display: flex; gap: var(--s-2); justify-content: flex-end; align-items: center; margin-top: var(--s-3); font-size: 13px; color: var(--text-muted); }
 
+/* Consumption by business unit / GPS code: rows open the inventory. */
+.cons-wrap { max-height: 440px; overflow-y: auto; }
+.inv-wrap { max-height: 70vh; overflow-y: auto; } /* a 200-row page scrolls inside, header sticky */
+.cons tbody tr[data-key] { cursor: pointer; }
+.cons tbody tr[data-key]:focus-visible { outline: 2px solid var(--acc-teal); outline-offset: -2px; }
+.cons__share { width: 40%; }
+.cons__flag { margin-left: var(--s-2); }
+.share { display: flex; align-items: center; gap: var(--s-3); }
+.share .kpi__bar { flex: 1; margin: 0; }
+.share__pct { min-width: 4.5em; text-align: right; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+
 /* ---------------------------------------------------------------------------
    13. Tabs
    --------------------------------------------------------------------------- */

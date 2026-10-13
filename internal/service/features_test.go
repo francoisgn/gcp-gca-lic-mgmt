@@ -4,6 +4,7 @@ package service_test
 // notifications, monthly directory re-check.
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -51,11 +52,11 @@ func TestExternalAccounts(t *testing.T) {
 	mustOutcome(t, res, service.OutcomeAssigned)
 	e.Request(t, "internal.user@example.com")
 
-	inv, err := e.Svc.Inventory(ctx, store.InventoryFilter{AccountType: "external"})
+	inv, err := e.Svc.Inventory(ctx, store.InventoryFilter{AccountType: "external"}, 0)
 	if err != nil || inv.Total != 1 || !inv.Rows[0].External {
 		t.Fatalf("external filter: %+v %v", inv, err)
 	}
-	if inv, _ = e.Svc.Inventory(ctx, store.InventoryFilter{AccountType: "internal"}); inv.Total != 1 {
+	if inv, _ = e.Svc.Inventory(ctx, store.InventoryFilter{AccountType: "internal"}, 0); inv.Total != 1 {
 		t.Fatalf("internal filter: total=%d", inv.Total)
 	}
 	sum, err := e.Svc.Summary(ctx)
@@ -190,7 +191,7 @@ func TestDirectoryRecheck(t *testing.T) {
 	if res, err := e.Svc.RecheckUser(ctx, "alex.martin@example.com", "anniv.user@example.com"); err != nil || res != service.CheckChanged {
 		t.Fatalf("changed: %s %v", res, err)
 	}
-	inv, _ := e.Svc.Inventory(ctx, store.InventoryFilter{DirectoryCheck: []string{"CHANGED"}})
+	inv, _ := e.Svc.Inventory(ctx, store.InventoryFilter{DirectoryCheck: []string{"CHANGED"}}, 0)
 	if inv.Total != 1 || inv.Rows[0].DriftFields[0] != "gps_code" {
 		t.Fatalf("changed filter: %+v", inv.Rows)
 	}
@@ -198,7 +199,7 @@ func TestDirectoryRecheck(t *testing.T) {
 	if n, err := e.Svc.AcknowledgeDrift(ctx, "alex.martin@example.com", []string{"anniv.user@example.com"}); err != nil || n != 1 {
 		t.Fatalf("acknowledge: %d %v", n, err)
 	}
-	if inv, _ = e.Svc.Inventory(ctx, store.InventoryFilter{DirectoryCheck: []string{"CHANGED"}}); inv.Total != 0 {
+	if inv, _ = e.Svc.Inventory(ctx, store.InventoryFilter{DirectoryCheck: []string{"CHANGED"}}, 0); inv.Total != 0 {
 		t.Fatal("drift not cleared")
 	}
 
@@ -210,7 +211,7 @@ func TestDirectoryRecheck(t *testing.T) {
 	if res, _ := e.Svc.RecheckUser(ctx, "alex.martin@example.com", "anniv.user@example.com"); res != service.CheckIneligible {
 		t.Fatalf("ineligible: %s", res)
 	}
-	if inv, _ = e.Svc.Inventory(ctx, store.InventoryFilter{DirectoryCheck: []string{"INELIGIBLE"}}); inv.Total != 1 {
+	if inv, _ = e.Svc.Inventory(ctx, store.InventoryFilter{DirectoryCheck: []string{"INELIGIBLE"}}, 0); inv.Total != 1 {
 		t.Fatalf("ineligible filter: %d", inv.Total)
 	}
 	// Directory down: ERROR, retried the next night.
@@ -269,5 +270,83 @@ func TestCredentialsReconciliation(t *testing.T) {
 	}
 	if m, _ := e.Creds.Members(ctx); !slices.Contains(m, "console.user@example.com") {
 		t.Fatalf("GOOGLE_ONLY member revoked: %v", m)
+	}
+}
+
+// Consumption by business unit and GPS code (display only) matches the
+// inventory filtered on the same key; the inventory is served by pages.
+func TestConsumption(t *testing.T) {
+	e := testenv.New(t, 10)
+	for i := range 6 {
+		_, res := e.Request(t, fmt.Sprintf("dev%d.user@example.com", i))
+		mustOutcome(t, res, service.OutcomeAssigned)
+	}
+	dir, _ := e.Request(t, "anna.dupont.ext@example.com")
+	if _, err := e.Svc.Escalate(ctx, e.User("anna.dupont.ext@example.com"), dir.RequestID,
+		service.EscalationInput{Division: "D", Entity: "E", Project: "P"}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.Svc.Approve(ctx, "alex.martin@example.com", dir.RequestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustOutcome(t, res, service.OutcomeAssigned)
+
+	for _, by := range []string{"bu", "gps"} {
+		v, err := e.Svc.Consumption(ctx, by)
+		if err != nil || v.Total != 7 || len(v.Rows) == 0 {
+			t.Fatalf("%s: %+v %v", by, v, err)
+		}
+		external := 0
+		for _, r := range v.Rows {
+			if r.Key == nil {
+				t.Fatalf("%s: license without directory data", by)
+			}
+			f := store.InventoryFilter{BusinessUnits: []string{*r.Key}}
+			if by == "gps" {
+				f = store.InventoryFilter{GPSCodes: []string{strings.ToUpper(*r.Key)}}
+				if !r.Allowlisted {
+					t.Errorf("gps %s: simulator codes are in the allowlist", *r.Key)
+				}
+			}
+			inv, err := e.Svc.Inventory(ctx, f, 0)
+			if err != nil || inv.Total != r.Licenses || r.Unused != 0 {
+				t.Errorf("%s %s: licenses=%d unused=%d, inventory=%d %v", by, *r.Key, r.Licenses, r.Unused, inv.Total, err)
+			}
+			external += r.External
+		}
+		if external != 1 {
+			t.Errorf("%s: external=%d", by, external)
+		}
+	}
+	if _, err := e.Svc.Consumption(ctx, "site"); err == nil {
+		t.Error("unknown grouping accepted")
+	}
+
+	// Without usage for unused_days, every license counts as unused.
+	e.Clock.Advance(8 * 24 * time.Hour)
+	if v, _ := e.Svc.Consumption(ctx, "bu"); v.Rows[0].Unused != v.Rows[0].Licenses {
+		t.Errorf("unused after 8 days: %+v", v.Rows[0])
+	}
+
+	// Pages: most recent first, no overlap, nothing lost.
+	seen := map[string]bool{}
+	for offset := 0; offset < 7; offset += 3 {
+		rows, total, err := e.DB.Inventory(ctx, store.InventoryFilter{}, ".ext", e.Clock.Now(), 3, offset)
+		if err != nil || total != 7 {
+			t.Fatalf("offset %d: total=%d %v", offset, total, err)
+		}
+		for _, r := range rows {
+			if seen[r.UserEmail] {
+				t.Fatalf("%s on two pages", r.UserEmail)
+			}
+			seen[r.UserEmail] = true
+		}
+	}
+	if len(seen) != 7 {
+		t.Fatalf("pages cover %d licenses, want 7", len(seen))
+	}
+	if inv, _ := e.Svc.Inventory(ctx, store.InventoryFilter{}, -5); inv.Offset != 0 || inv.Limit != service.InventoryPageSize {
+		t.Fatalf("offset=%d limit=%d", inv.Offset, inv.Limit)
 	}
 }
