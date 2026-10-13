@@ -1,0 +1,22 @@
+Hello {{.Name}},
+
+{{if .ApprovedBy}}{{.ApprovedBy}} approved your request: a{{else}}A{{end}} Gemini Code Assist license and the cloud permissions required to use it have been assigned to {{.Email}}.
+
+  Request date     : {{date .RequestDate}}
+  Assignment date  : {{date .AssignDate}}
+  Planned end      : {{date .EndDate}} ({{.DurationLabel}})
+
+SET UP GEMINI CODE ASSIST IN VS CODE
+  1. Install the "Gemini Code Assist" extension (publisher: Google) from the VS Code Marketplace.
+  2. Click the Gemini Code Assist icon in the activity bar, then "Sign in with Google" using {{.Email}}.
+  3. When prompted, select the Google Cloud project: {{.ProjectID}}
+  4. Open a file and start coding: completions appear inline, the chat is in the side panel.
+  Guide: {{.Links.VSCodeGuide}}
+
+USAGE RULES
+  - Command-line usage is FORBIDDEN: do not use this license with Gemini CLI or any terminal / agent tool. IDE usage only.
+  - Follow the company generative-AI usage policy: {{.Links.UsagePolicy}}
+  - Complete the company AI usage training if not done yet: {{.Links.AIUsageTraining}}
+  - A license not used for {{.UnusedDays}} days is automatically removed and given to someone in the waiting list.
+
+Portal: {{.PortalURL}}

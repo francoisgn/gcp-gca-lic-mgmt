@@ -1,0 +1,8 @@
+Hello {{.Name}},
+
+{{if .ApprovedBy}}{{.ApprovedBy}}{{else}}An administrator{{end}} approved your Gemini Code Assist license request.
+{{if .Queued}}Every license of the pool is currently assigned: you are #{{.Position}} in the waiting list. Your license will be assigned automatically as soon as one is released.{{else}}Your license is being assigned: a Google service is slow to answer, the assignment is retried automatically.{{end}}
+
+You will receive another e-mail as soon as your license is active.
+
+Portal: {{.PortalURL}}

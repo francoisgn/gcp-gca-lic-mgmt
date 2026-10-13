@@ -1,0 +1,40 @@
+# -----------------------------------------------------------------------------
+# Integration settings — LOCAL DEVELOPMENT (APP_ENV=dev, the default).
+# Everything is simulated; docker compose overrides the directory with the
+# HTTP simulator (DIRECTORY_MODE=http, DIRECTORY_URL=http://edsim:8081).
+# -----------------------------------------------------------------------------
+
+directory:
+  mode: simulated
+  base_url: http://localhost:8081
+  timeout: 5s
+  lookup:
+    path: /v1/accounts
+    email_param: email
+  auth:
+    type: bearer
+    secret_env: DIRECTORY_API_KEY
+  fields:
+    status: status
+    site: site
+    business_unit: businessUnit
+    gps_code: gpsCode
+  simulator:
+    failure_rate: 0
+    max_latency: 600ms
+
+tracker:
+  mode: log
+  gitlab:
+    base_url: https://gitlab.example.com
+    project: platform/gca-license-portal
+    labels: [gca-portal, feedback]
+    token_secret_env: GITLAB_TOKEN
+
+mail:
+  mode: log
+  from: gca-portal@example.com
+  smtp:
+    host: localhost
+    port: 1025
+    password_secret_env: SMTP_PASSWORD

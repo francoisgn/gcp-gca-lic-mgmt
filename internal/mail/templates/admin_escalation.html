@@ -1,0 +1,13 @@
+{{template "header" .}}
+<h1 style="font-family:Lato,Roboto,Arial,sans-serif;font-size:24px;margin:0 0 16px 0;color:#cdd6f4;">New request to review</h1>
+<p>Hello {{.Name}},</p>
+<p><strong>{{.Requester}}</strong>{{if .External}} (external account){{end}} escalated a Gemini Code Assist license request.</p>
+<table role="presentation" cellspacing="0" cellpadding="6" style="font-size:14px;margin:16px 0;background:#181825;border-radius:12px;width:100%;">
+<tr><td style="color:#a6adc8;">Why not automatic</td><td>{{.Reason}}</td></tr>
+<tr><td style="color:#a6adc8;">Division</td><td>{{.Division}}</td></tr>
+<tr><td style="color:#a6adc8;">Entity</td><td>{{.Entity}}</td></tr>
+<tr><td style="color:#a6adc8;">Project</td><td>{{.Project}}</td></tr>
+{{if .Comment}}<tr><td style="color:#a6adc8;">Comment</td><td>{{.Comment}}</td></tr>{{end}}
+</table>
+<p><a href="{{.PortalURL}}/admin#approvals" style="color:#8fcfba;">Review it in the portal</a></p>
+{{template "footer" .}}

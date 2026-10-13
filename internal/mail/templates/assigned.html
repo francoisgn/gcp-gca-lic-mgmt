@@ -1,0 +1,25 @@
+{{template "header" .}}
+<h1 style="font-family:Lato,Roboto,Arial,sans-serif;font-size:24px;margin:0 0 16px 0;color:#cdd6f4;">Your Gemini Code Assist license is active</h1>
+<p>Hello {{.Name}},</p>
+<p>Good news: {{if .ApprovedBy}}{{.ApprovedBy}} approved your request and {{end}}a Gemini Code Assist license and the cloud permissions required to use it have been assigned to <strong>{{.Email}}</strong>.</p>
+<table role="presentation" cellspacing="0" cellpadding="6" style="font-size:14px;margin:16px 0;background:#181825;border-radius:12px;width:100%;">
+<tr><td style="color:#a6adc8;">Request date</td><td>{{date .RequestDate}}</td></tr>
+<tr><td style="color:#a6adc8;">Assignment date</td><td>{{date .AssignDate}}</td></tr>
+<tr><td style="color:#a6adc8;">Planned end</td><td><strong>{{date .EndDate}}</strong> ({{.DurationLabel}})</td></tr>
+</table>
+<h2 style="font-family:Lato,Roboto,Arial,sans-serif;font-size:18px;color:#b4befe;margin:24px 0 8px 0;">Set up Gemini Code Assist in VS Code</h2>
+<ol style="padding-left:20px;margin:0;">
+<li>Install the <strong>Gemini Code Assist</strong> extension (publisher: Google) from the VS Code Marketplace.</li>
+<li>Click the Gemini Code Assist icon in the activity bar, then <strong>Sign in with Google</strong> using {{.Email}}.</li>
+<li>When prompted, select the Google Cloud project <code style="background:#313244;padding:2px 6px;border-radius:6px;">{{.ProjectID}}</code>.</li>
+<li>Open a file and start coding: completions appear inline, the chat is in the side panel.</li>
+</ol>
+<p style="margin-top:8px;">Detailed guide: <a href="{{.Links.VSCodeGuide}}" style="color:#8fcfba;">{{.Links.VSCodeGuide}}</a></p>
+<h2 style="font-family:Lato,Roboto,Arial,sans-serif;font-size:18px;color:#e78284;margin:24px 0 8px 0;">Usage rules</h2>
+<ul style="padding-left:20px;margin:0;">
+<li><strong>Command-line usage is forbidden</strong>: do not use this license with Gemini CLI or any terminal / agent tool. IDE usage only.</li>
+<li>Follow the company generative-AI usage policy: <a href="{{.Links.UsagePolicy}}" style="color:#8fcfba;">{{.Links.UsagePolicy}}</a></li>
+<li>Complete the company AI usage training if not done yet: <a href="{{.Links.AIUsageTraining}}" style="color:#8fcfba;">{{.Links.AIUsageTraining}}</a></li>
+<li>A license not used for <strong>{{.UnusedDays}} days</strong> is automatically removed and given to someone in the waiting list.</li>
+</ul>
+{{template "footer" .}}

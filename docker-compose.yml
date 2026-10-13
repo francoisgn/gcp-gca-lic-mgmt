@@ -1,0 +1,52 @@
+# Local development stack: PostgreSQL + enterprise directory simulator + portal
+# (fake Google API, demo data, in-process scheduler).
+#   docker compose up --build   ->  http://localhost:8080
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gcalm
+      POSTGRES_PASSWORD: gcalm
+      POSTGRES_DB: gcalm
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gcalm"]
+      interval: 3s
+      retries: 20
+
+  edsim:
+    build: .
+    entrypoint: ["/app/edsim"]
+    environment:
+      PORT: "8081"
+      API_KEY: dev-directory-key
+      FAILURE_RATE: "0.05"
+    ports: ["8081:8081"]
+
+  app:
+    build:
+      context: .
+      args: { VERSION: compose }
+    depends_on:
+      db: { condition: service_healthy }
+      edsim: { condition: service_started }
+    environment:
+      APP_MODE: all
+      APP_ENV: dev
+      AUTH_MODE: dev
+      DATABASE_URL: postgres://gcalm:gcalm@db:5432/gcalm?sslmode=disable
+      GOOGLE_MODE: fake
+      FAKE_GOOGLE_STATE_FILE: /tmp/fake-google.json
+      CREDENTIALS_MODE: fake
+      DIRECTORY_MODE: http
+      DIRECTORY_URL: http://edsim:8081
+      DIRECTORY_API_KEY: dev-directory-key
+      MAIL_MODE: log
+      TRACKER_MODE: log
+      DEMO_SEED: "true"
+      INPROCESS_SCHEDULER: "true"
+    ports: ["8080:8080"]
+
+volumes:
+  pgdata:
