@@ -2,7 +2,7 @@
 
 ![Observability](images/observability.png)
 
-Page *Observability* (admins). Data from `/api/obs/*`, charts with Chart.js.
+Page *Observability* (admins). Data from `/api/obs/*`, charts with Chart.js. Everything is embedded in the portal: no BigQuery / Looker Studio layer (decision #25 in [[Open Questions]]).
 
 ## Business KPIs
 
@@ -19,7 +19,8 @@ Page *Observability* (admins). Data from `/api/obs/*`, charts with Chart.js.
 | Directory data changed | active licenses whose site / BU / GPS code changed since assignment (monthly re-check) |
 | No longer eligible | active licenses that would not be auto-approved today |
 | Re-check failed | last re-check in error (+ number never checked yet) |
-| Inventory | active licenses with filter chips (incl. account type and directory check), selection and removal (see [[Functional Specification]]) |
+| **Consumption** | active licenses per **business unit** or per **GPS code**: count, share of active licenses, unused for ≥ `unused_days`, external accounts; GPS codes outside the allowlist are flagged (admin-approved licenses). Display only, no quota. A line opens the inventory filtered on it (same counts). |
+| Inventory | active licenses by pages of 200 (most recent first, *Previous / Next*), e-mail search, filter chips (incl. account type and directory check), GPS code filter (from *Consumption*), selection and removal (see [[Functional Specification]]) |
 
 Period selector: 14 / 30 / 90 days.
 

@@ -145,11 +145,23 @@ func (s *Server) apiUnassignByFilter(w http.ResponseWriter, r *http.Request, id 
 }
 
 func (s *Server) apiInventory(w http.ResponseWriter, r *http.Request, _ auth.Identity) error {
-	var f store.InventoryFilter
-	if err := readJSON(r, &f); err != nil {
+	var in struct {
+		store.InventoryFilter
+		Offset int `json:"offset"`
+	}
+	if err := readJSON(r, &in); err != nil {
 		return err
 	}
-	v, err := s.svc.Inventory(r.Context(), f)
+	v, err := s.svc.Inventory(r.Context(), in.InventoryFilter, in.Offset)
+	if err != nil {
+		return err
+	}
+	writeJSON(w, http.StatusOK, v)
+	return nil
+}
+
+func (s *Server) apiConsumption(w http.ResponseWriter, r *http.Request, _ auth.Identity) error {
+	v, err := s.svc.Consumption(r.Context(), r.URL.Query().Get("by"))
 	if err != nil {
 		return err
 	}

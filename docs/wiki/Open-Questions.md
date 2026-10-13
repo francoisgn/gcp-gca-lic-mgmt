@@ -32,22 +32,25 @@ Assumptions taken in the current version — to confirm with the business / plat
 | 14 | KPI mock-ups | Target architecture and wireframe boards received (images) and compared; remaining gaps in the backlog below. |
 | 19 | Approval e-mails | One e-mail when the license is active right away, two (approved, then active) when the user has to wait. |
 | 21 | Who decides on a non-eligible request | The **service team** (admins of `roles.yaml`) only — no approval step by the manager. |
-| 22 | Quotas per division | **None**: one global waiting list. |
+| 22 | Quotas per division | **None**: one global waiting list. Consumption is **displayed** per business unit and per GPS code (*Observability → Consumption*), never enforced. |
 | 23 | Directory refresh of license holders | **Monthly**, on the assignment anniversary (no daily refresh of every profile). |
 | 24 | Scheduled jobs and delivery | Cloud Run jobs executed by Cloud Scheduler; delivery from the internal GitLab with Workload Identity Federation (no key). |
+| 25 | Reporting / BI | **No BigQuery / Looker Studio.** Observability stays embedded in the portal; reworked only if real use shows problems (load, missing views). |
+| 26 | Business unit administration | The **5–10 administrators** of `roles.yaml` represent the business units and see every BU; no wider opening, no per-BU administrator role. |
 
 ## Backlog — gaps with the target architecture boards
 
-Not scheduled yet; ordered as the migration plan needs them.
+Not scheduled. Sized for the expected volume: **5,000–6,000 seats, 50–80 removals and as many assignments per day**.
 
-| Gap | Why it matters |
-|---|---|
-| **Shadow (read-only) mode**: no write to Google, the group or users; jobs only observe; request form off | Run next to the previous tool with one writer at a time, check KPI parity before the switch |
-| License and group sync every 15 min; landing page reading the database | Freshness and Google API load with thousands of seats |
-| Ops page: job health, alerts (free < 5 %, order change, refusals, drift pool / database / group), license API errors per day; 90-day availability bar | Operations and parity checks |
-| BI layer: BigQuery (replica, daily snapshots, Code Assist usage export), BI page filtered by division / cost center / GPS / site / country | Steering and cost per entity; active users from real usage |
-| Directory profile fields: division, cost center, employee type, manager | BI filters, exports |
-| Exceptions registry (externals, technical accounts, permanent list) with owner, reason and review date | Governance of non-standard licenses |
-| Idle warning e-mail before the 7-day removal | User experience |
-| Training completion checked in the learning platform | Needs its API |
-| Inventory pagination beyond 1,000 rows | Large pools (the mass removal by filter already covers every row) |
+| Gap | Priority | Why |
+|---|---|---|
+| Idle warning e-mail before the 7-day removal | 🟢 next | 50–80 removals a day: fewer surprised users and re-requests |
+| Alert *free seats < 5 %* (Cloud Monitoring) | 🟢 next | at this rate the waiting list builds up within days |
+| **Shadow (read-only) mode**: no write to Google, the group or users; jobs only observe; request form off | 🟠 if a tool manages the seats today | one writer at a time, KPI parity before the switch |
+| Other alerts (order change, refusals, drift pool / database / group) | 🟠 | Cloud Monitoring rather than an in-app page |
+| Exceptions registry (externals, technical accounts, permanent list) with owner, reason and review date | 🟠 | governance of non-standard licenses |
+| Training completion checked in the learning platform | 🟠 | needs its API |
+| License and group sync every 15 min; landing page reading the database | ⚪ deferred | ~160 Google calls a day: the 3-hour refresh is enough |
+| Directory profile fields: division, cost center, employee type, manager | ⚪ deferred | consumption is shown by business unit and GPS code only (#22) |
+
+Dropped: BI layer (BigQuery / Looker Studio, decision #25). Done: inventory by pages (200 rows, every license reachable), consumption by business unit / GPS code.

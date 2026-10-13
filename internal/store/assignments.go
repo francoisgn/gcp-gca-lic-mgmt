@@ -85,6 +85,7 @@ type InventoryFilter struct {
 	Search         string   `json:"search"` // substring of the e-mail
 	Sites          []string `json:"sites"`
 	BusinessUnits  []string `json:"businessUnits"`
+	GPSCodes       []string `json:"gpsCodes"`
 	Sources        []string `json:"sources"`
 	UnusedDaysMin  int      `json:"unusedDaysMin"`  // no usage for at least N days
 	ExpiresInDays  int      `json:"expiresInDays"`  // expires within N days (>0)
@@ -112,6 +113,13 @@ func (f InventoryFilter) where(now time.Time, externalSuffix string) (string, []
 	}
 	if len(f.BusinessUnits) > 0 {
 		add("business_unit = ANY(?)", f.BusinessUnits)
+	}
+	if len(f.GPSCodes) > 0 {
+		codes := make([]string, len(f.GPSCodes))
+		for i, c := range f.GPSCodes {
+			codes[i] = strings.ToLower(strings.TrimSpace(c))
+		}
+		add("lower(gps_code) = ANY(?)", codes)
 	}
 	if len(f.Sources) > 0 {
 		add("source = ANY(?)", f.Sources)
@@ -150,16 +158,44 @@ func (f InventoryFilter) where(now time.Time, externalSuffix string) (string, []
 	return strings.Join(conds, " AND "), args
 }
 
-// Inventory returns the active assignments matching a filter.
-func (q Q) Inventory(ctx context.Context, f InventoryFilter, externalSuffix string, now time.Time, limit int) ([]Assignment, int, error) {
+// Inventory returns one page of the active assignments matching a filter
+// (most recent first) and the number of matching assignments.
+func (q Q) Inventory(ctx context.Context, f InventoryFilter, externalSuffix string, now time.Time, limit, offset int) ([]Assignment, int, error) {
 	where, args := f.where(now, externalSuffix)
 	total, err := scalar[int](ctx, q.db, `SELECT count(*) FROM license_assignments WHERE `+where, args...)
 	if err != nil {
 		return nil, 0, err
 	}
 	rows, err := many[Assignment](ctx, q.db, fmt.Sprintf(`SELECT * FROM license_assignments WHERE %s
-		ORDER BY assigned_at DESC, id DESC LIMIT %d`, where, limit), args...)
+		ORDER BY assigned_at DESC, id DESC LIMIT %d OFFSET %d`, where, limit, max(offset, 0)), args...)
 	return rows, total, err
+}
+
+// ConsumptionRow is the license consumption of one business unit or GPS code.
+type ConsumptionRow struct {
+	Key         *string `db:"key" json:"key"` // nil: unknown (no directory data)
+	Licenses    int     `db:"licenses" json:"licenses"`
+	Unused      int     `db:"unused" json:"unused"`
+	External    int     `db:"external" json:"external"`
+	Allowlisted bool    `db:"allowlisted" json:"allowlisted"` // GPS code in the allowlist
+}
+
+// Consumption groups the active assignments by business unit (by = "bu") or
+// GPS code (by = "gps"). Unused and external use the inventory filter rules,
+// so a row and the inventory filtered on its key give the same numbers.
+func (q Q) Consumption(ctx context.Context, by, externalSuffix string, unusedSince time.Time) ([]ConsumptionRow, error) {
+	key, join, allowlisted := "a.business_unit", "", "false"
+	if by == "gps" {
+		key = "lower(a.gps_code)"
+		join = "LEFT JOIN allowed_gps_codes g ON g.code = lower(a.gps_code)"
+		allowlisted = "bool_or(g.code IS NOT NULL)"
+	}
+	return many[ConsumptionRow](ctx, q.db, `SELECT `+key+` AS key, count(*)::int AS licenses,
+		(count(*) FILTER (WHERE COALESCE(a.last_usage_at, a.assigned_at) <= $1))::int AS unused,
+		(count(*) FILTER (WHERE $2 <> '' AND right(split_part(a.user_email, '@', 1), length($2::text)) = $2))::int AS external,
+		`+allowlisted+` AS allowlisted
+		FROM license_assignments a `+join+`
+		WHERE a.ended_at IS NULL GROUP BY 1 ORDER BY 2 DESC, 1`, unusedSince, strings.ToLower(externalSuffix))
 }
 
 // InventoryEmails returns every e-mail matching a filter (mass removal).
