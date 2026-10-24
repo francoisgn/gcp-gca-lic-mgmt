@@ -3,7 +3,7 @@
 [![CI](https://github.com/francoisgn/gcp-gca-lic-mgmt/actions/workflows/ci.yml/badge.svg)](https://github.com/francoisgn/gcp-gca-lic-mgmt/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/francoisgn)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-%E2%98%95-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/francoisgn)![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/francoisgn/gcp-gca-lic-mgmt?utm_source=oss&utm_medium=github&utm_campaign=francoisgn%2Fgcp-gca-lic-mgmt&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 **Self-service portal to govern Gemini Code Assist Standard / Enterprise licenses in a Google Cloud organization**: eligible employees get a license in seconds, the pool is reclaimed automatically, administrators keep control and Google stays the source of truth.
 
